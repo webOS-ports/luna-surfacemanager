@@ -1,19 +1,5 @@
 {
     "com.webos.surfacemanager*": [
-        "account.query",
-        "application.launcher",
-        "application.operation",
-        "audio.operation",
-        "audio.query",
-        "boot.query",
-        "database.operation",
-        "settings.management",
-        "settings.query",
-        "systemconfig.management",
-        "systemconfig.query",
-        "media.displayControl",
-        "media.displayInfo",
-        "notification.management",
-        "notification.operation"
+        "all"
     ]
 }
