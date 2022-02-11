@@ -10,7 +10,8 @@
             \"outbound\": [
                 \"com.lge.*\",
                 \"com.palm.*\",
-                \"com.webos.*\"
+                \"com.webos.*\",
+                \"org.webosports.*\"
             ]
         }
     ]
