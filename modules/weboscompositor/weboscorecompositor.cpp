@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2021 LG Electronics, Inc.
+// Copyright (c) 2014-2022 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -58,6 +58,7 @@
 #include "weboskeyfilter.h"
 #include "webosinputmethod.h"
 #include "waylandinputmethod.h"
+#include "waylandinputmethodmanager.h"
 
 #include "weboskeyboard.h"
 #include "webostablet/webostablet.h"
@@ -134,6 +135,15 @@ QWaylandSeat *WebOSCoreCompositorPrivate::seatFor(QInputEvent *inputEvent)
             wWheel = static_cast<WebOSWheelEvent *>(wheel);
         if (wWheel && wWheel->window())
             return static_cast<WebOSCompositorWindow *>(wWheel->window())->inputDevice();
+    }
+
+    if (type == QEvent::HoverEnter || type == QEvent::HoverLeave) {
+        QHoverEvent *hover = static_cast<QHoverEvent *>(inputEvent);
+        if (hover) {
+            WebOSHoverEvent *wHover = dynamic_cast<WebOSHoverEvent *>(hover);
+            if (wHover && wHover->window())
+                return static_cast<WebOSCompositorWindow *>(wHover->window())->inputDevice();
+        }
     }
 
     return QWaylandCompositorPrivate::seatFor(inputEvent);
@@ -322,7 +332,8 @@ void WebOSCoreCompositor::registerWindow(QQuickWindow *window, QString name)
 
         m_surfaceModel = new WebOSSurfaceModel();
 
-        setInputMethod(new WebOSInputMethod(this));
+        setInputMethod(createInputMethod());
+        m_inputMethod->initialize();
 
         connect(m_unixSignalHandler, &UnixSignalHandler::sighup, this, &WebOSCoreCompositor::reloadConfig);
         connect(m_unixSignalHandler, &UnixSignalHandler::sighup, WebOSCompositorConfig::instance(), &WebOSCompositorConfig::dump);
@@ -360,6 +371,10 @@ void WebOSCoreCompositor::registerWindow(QQuickWindow *window, QString name)
         QWaylandSeat *device =
             new WebOSInputDevice(this, QWaylandSeat::Keyboard | QWaylandSeat::Touch | QWaylandSeat::Pointer);
         webosWindow->setInputDevice(device);
+
+        // Install the key filter for secondary windows.
+        if (m_keyFilter)
+            webosWindow->installEventFilter(m_keyFilter);
     }
 }
 
@@ -684,7 +699,7 @@ void WebOSCoreCompositor::surfaceCreated(QWaylandSurface *surface) {
 
     /* Ensure that WebOSSurfaceItem is created after surfaceDestroyed is connected.
        Refer to upper comment about life cycle of surface and surface item. */
-    WebOSSurfaceItem *item = new WebOSSurfaceItem(this, static_cast<QWaylandQuickSurface *>(surface));
+    WebOSSurfaceItem *item = createSurfaceItem(static_cast<QWaylandQuickSurface *>(surface));
 
     connect(surface, &QWaylandSurface::hasContentChanged, [this, surface, item] {
         if (surface->hasContent()) {
@@ -1097,8 +1112,10 @@ void WebOSCoreCompositor::setKeyFilter(WebOSKeyFilter *filter)
 {
     PMTRACE_FUNCTION;
     if (m_keyFilter != filter) {
-        window()->removeEventFilter(m_keyFilter);
-        window()->installEventFilter(filter);
+        for (int i = 0; i < m_windows.size(); ++i) {
+            m_windows[i]->removeEventFilter(m_keyFilter);
+            m_windows[i]->installEventFilter(filter);
+        }
 
         foreach (CompositorExtension* ext, m_extensions) {
             ext->removeEventFilter(m_keyFilter);
@@ -1461,3 +1478,17 @@ void WebOSCoreCompositor::unregisterSeat(QWaylandSeat *seat)
     d->seats.removeOne(seat);
 }
 
+WebOSSurfaceItem* WebOSCoreCompositor::createSurfaceItem(QWaylandQuickSurface *surface)
+{
+    return new WebOSSurfaceItem(this, surface);
+}
+
+WebOSInputMethod* WebOSCoreCompositor::createInputMethod()
+{
+    return new WebOSInputMethod(this);
+}
+
+WaylandInputMethodManager* WebOSCoreCompositor::createInputMethodManager(WaylandInputMethod *inputMethod)
+{
+    return new WaylandInputMethodManager(inputMethod);
+}

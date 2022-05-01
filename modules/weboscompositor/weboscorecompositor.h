@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2021 LG Electronics, Inc.
+// Copyright (c) 2014-2022 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,6 +36,8 @@
 #include "webossurfaceitem.h"
 #include "weboscompositorconfig.h"
 
+class WaylandInputMethod;
+class WaylandInputMethodManager;
 class WebOSInputMethod;
 class WebOSSurfaceModel;
 class CompositorExtension;
@@ -215,7 +217,10 @@ public:
     QRect outputGeometry() const { return m_outputGeometry; }
     void setOutputGeometry(QRect const &size) { m_outputGeometry = size; }
 
-    virtual void postInit() {};
+    virtual void postInit() {}
+    virtual WebOSSurfaceItem* createSurfaceItem(QWaylandQuickSurface *surface);
+    virtual WebOSInputMethod* createInputMethod();
+    virtual WaylandInputMethodManager* createInputMethodManager(WaylandInputMethod *inputMethod);
 
 public slots:
     void handleActiveFocusItemChanged();

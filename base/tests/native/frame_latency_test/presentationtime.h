@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2022 LG Electronics, Inc.
+// Copyright (c) 2021 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,32 +14,21 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#pragma once
-
 #include <QObject>
-#include <QSocketNotifier>
+#include <webosplatform.h>
+#include <webospresentationtime.h>
 
-#include "weboscompositorexport.h"
-
-class WEBOS_COMPOSITOR_EXPORT UnixSignalHandler : public QObject
+class PresentationTime : public QObject
 {
-    Q_OBJECT
-
+Q_OBJECT
 public:
-    UnixSignalHandler(QObject*);
-    ~UnixSignalHandler();
-
-    // Unix signal handlers.
-    static void deliverUnixSignaltoQt(int sigNo);
-
-public slots:
-    void handleSignal();
+    PresentationTime() {
+        WebOSPresentationTime *presentation = WebOSPlatform::instance()->presentation();
+        if (presentation)
+            connect(presentation, &WebOSPresentationTime::presented, this, &PresentationTime::presented);
+    }
 
 signals:
-    void sighup();
+    void presented(uint32_t d2p, uint32_t p2p);
 
-private:
-    static int m_sigFd[2];
-
-    QSocketNotifier *m_signalNotifier;
 };
