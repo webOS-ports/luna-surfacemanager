@@ -1,4 +1,4 @@
-// Copyright (c) 2019 LG Electronics, Inc.
+// Copyright (c) 2019-2022 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,10 +34,18 @@ VideoWindowInformer* VideoWindowInformer::instance()
     return m_instance;
 }
 
-void VideoWindowInformer::insertVideoWindowList(const QString contextId, const QRect destinationRectangle, const QString windowId)
+void VideoWindowInformer::resetInstance()
 {
-    qDebug() << "insertVideoWindowList() with contextId : " << contextId << " , destinationRectangle : " << destinationRectangle << " , windowId " << windowId;
-    emit insertVideoWindowInfo(contextId, destinationRectangle, windowId);
+    if (m_instance)
+        delete m_instance;
+
+    m_instance = nullptr;
+}
+
+void VideoWindowInformer::insertVideoWindowList(const QString contextId, const QRect destinationRectangle, const QString windowId, const QString appId, const QRect appWindow)
+{
+    qDebug() << "insertVideoWindowList() with contextId : " << contextId << " , destinationRectangle : " << destinationRectangle << " , windowId : " << windowId << "  ,  appId " << appId << " , appWindow : " << appWindow;
+    emit insertVideoWindowInfo(contextId, destinationRectangle, windowId, appId, appWindow);
 }
 
 void VideoWindowInformer::removeVideoWindowList(const QString contextId)

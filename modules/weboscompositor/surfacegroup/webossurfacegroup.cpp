@@ -63,8 +63,12 @@ void WebOSSurfaceGroup::webos_surface_group_destroy_resource(Resource *resource)
         qInfo("Group '%s' owner destroyed", qPrintable(m_name));
         if (m_groupCompositor)
             m_groupCompositor->removeGroup(this);
-        if (m_root)
+        if (m_root) {
             m_root->setSurfaceGroup(NULL);
+            //m_root->disconnect(this);
+            m_zOrderedSurfaceLayoutInfoList.clear();
+            m_keyOrderedItems.clear();
+        }
 
         m_owner = NULL;
         m_root = NULL;
@@ -547,5 +551,48 @@ WebOSSurfaceItem* WebOSSurfaceGroup::nextKeyOrderedSurfaceGroupItem(WebOSSurface
             }
         }
     }
+    return returnItem;
+}
+
+WebOSSurfaceItem* WebOSSurfaceGroup::findKeyFocusedItem()
+{
+    WebOSSurfaceItem* returnItem = NULL;
+    int topIndex = -1;
+
+    if (allowLayerKeyOrder()) {
+        topIndex = m_keyOrderedItems.size() -1;
+        qInfo() << "topIndex: " << topIndex << " in m_keyOrderedItems: " << m_keyOrderedItems.size();
+        if (topIndex >= 0)
+            for (int i = topIndex; i >=0; i--) {
+                WebOSSurfaceItem* item = qobject_cast<WebOSSurfaceItem *>(m_keyOrderedItems[i].first);
+                if (item && item->isMapped()) {
+                    returnItem = item;
+                    break;
+                } else {
+                    qWarning() << "[GROUP]" << item << " is not mapped. Find next key order item";
+                }
+            }
+    } else {
+        if (!m_zOrderedSurfaceLayoutInfoList.isEmpty()) {
+            topIndex = m_zOrderedSurfaceLayoutInfoList.size() - 1;
+            qInfo() << "topIndex: " << topIndex << " in m_zOrderedSurfaceLayoutInfoList: " << m_zOrderedSurfaceLayoutInfoList.size();
+            if (topIndex >= 0)
+                for (int i = topIndex; i >=0; i--) {
+                    WebOSSurfaceItem* item = qobject_cast<WebOSSurfaceItem *>(m_zOrderedSurfaceLayoutInfoList[i].first);
+                    if (item && item->isMapped()) {
+                        returnItem = item;
+                        break;
+                    } else {
+                        qWarning() << "[GROUP]" << item << "is not mapped. Find next z ordered surface item";
+                    }
+                }
+        }
+    }
+
+    if (returnItem)
+        qInfo() << "returnItem: " << returnItem;
+    else
+        qInfo() << "returnItem is null";
+
     return returnItem;
 }

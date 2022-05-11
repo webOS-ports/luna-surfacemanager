@@ -32,6 +32,7 @@
 #include <QScreen>
 #include <QJsonArray>
 #include <QWaylandQuickOutput>
+#include <QPointer>
 
 #include "weboscorecompositor.h"
 #include "weboscompositorwindow.h"
@@ -217,7 +218,6 @@ WebOSCoreCompositor::WebOSCoreCompositor(ExtensionFlags extensions, const char *
     , m_directRendering(false)
     , m_fullscreenTick(0)
     , m_surfaceGroupCompositor(0)
-    , m_foreign(nullptr)
     , m_unixSignalHandler(new UnixSignalHandler(this))
     , m_eventPreprocessor(new EventPreprocessor(this))
     , m_inputMethod(0)
@@ -233,10 +233,9 @@ WebOSCoreCompositor::WebOSCoreCompositor(ExtensionFlags extensions, const char *
     , m_loaded(false)
     , m_respawned(false)
     , m_registered(false)
+    , m_extensionFlags(extensions)
 {
     setSocketName(socketName);
-
-    initializeExtensions(extensions);
 
     connect(this, &QWaylandCompositor::surfaceRequested, this, [this] (QWaylandClient *client, uint id, int version) {
         WebOSSurface *surface = new WebOSSurface();
@@ -299,6 +298,7 @@ void WebOSCoreCompositor::insertToWindows(WebOSCompositorWindow *window)
 
 void WebOSCoreCompositor::create()
 {
+    initializeExtensions(m_extensionFlags);
     QWaylandCompositor::create();
     checkDaemonFiles();
 }
@@ -307,7 +307,9 @@ void WebOSCoreCompositor::registerWindow(QQuickWindow *window, QString name)
 {
     QWaylandQuickOutput *output = new QWaylandQuickOutput(this, window);
     if (!output) {
-        qCritical() << "Failed to create QWaylandOutput for window" << window << name;
+        qCritical() << "Failed to create QWaylandOutput for window, "
+                    << "window :" << (window ? window : nullptr)
+                    << "name :" << name;
         return;
     }
 
@@ -331,6 +333,11 @@ void WebOSCoreCompositor::registerWindow(QQuickWindow *window, QString name)
         setDefaultOutput(output);
 
         m_surfaceModel = new WebOSSurfaceModel();
+        if (m_surfaceModel == nullptr) {
+            qWarning()  << "[surfaceModel] Invalid pointer, "
+                        << "window :" << (window ? window : nullptr)
+                        << "name :" << name;
+        }
 
         setInputMethod(createInputMethod());
         m_inputMethod->initialize();
@@ -347,7 +354,7 @@ void WebOSCoreCompositor::registerWindow(QQuickWindow *window, QString name)
 
         m_shell = new WebOSShell(this);
 
-        m_inputManager = new WebOSInputManager(this);
+        m_inputManager = createInputManager();
 #ifdef MULTIINPUT_SUPPORT
         m_inputDevicePreallocated = new WebOSInputDevice(this);
 #endif
@@ -494,7 +501,7 @@ bool WebOSCoreCompositor::isMapped(WebOSSurfaceItem *item)
 void WebOSCoreCompositor::onSurfaceMapped(QWaylandSurface *surface, WebOSSurfaceItem* item) {
     PMTRACE_FUNCTION;
 
-    if (item && !item->imported()) {
+    if (!item->imported()) {
         if (item->isPartOfGroup()) {
             // The management of surface groups is left solely to the qml
             // for example the state changes etc. This is done to ensure that
@@ -531,7 +538,7 @@ void WebOSCoreCompositor::onSurfaceMapped(QWaylandSurface *surface, WebOSSurface
 
         qDebug() << item << "Items in compositor: " <<  getItems();
         emit surfaceMapped(item);
-    }
+    }        
 }
 
 WebOSSurfaceItem* WebOSCoreCompositor::activeSurface()
@@ -617,11 +624,6 @@ QList<QObject *> WebOSCoreCompositor::windowsInCluster(QString clusterName)
 void WebOSCoreCompositor::onSurfaceUnmapped(QWaylandSurface *surface, WebOSSurfaceItem* item) {
     PMTRACE_FUNCTION;
 
-    if (!item) {
-        qWarning() << "No item for surface" << surface;
-        return;
-    }
-
     qInfo() << surface << item << item->appId() << item->itemState();
 
     if (webOSWindowExtension()) {
@@ -649,7 +651,8 @@ void WebOSCoreCompositor::onSurfaceDestroyed(QWaylandSurface *surface, WebOSSurf
     PMTRACE_FUNCTION;
 
     if (!item) {
-        qWarning() << "No item for surface" << surface;
+        qWarning() << "[WebOSSurfaceItem] Invalid pointer, "
+                   << "surface :" << surface;
         return;
     }
 
@@ -697,6 +700,11 @@ void WebOSCoreCompositor::onSurfaceDestroyed(QWaylandSurface *surface, WebOSSurf
 void WebOSCoreCompositor::surfaceCreated(QWaylandSurface *surface) {
     PMTRACE_FUNCTION;
 
+    if (surface == nullptr) {
+        qWarning() << "[QWaylandSurface] Invalid pointer";
+        return;
+    }
+
     /* Ensure that WebOSSurfaceItem is created after surfaceDestroyed is connected.
        Refer to upper comment about life cycle of surface and surface item. */
     WebOSSurfaceItem *item = createSurfaceItem(static_cast<QWaylandQuickSurface *>(surface));
@@ -709,18 +717,42 @@ void WebOSCoreCompositor::surfaceCreated(QWaylandSurface *surface) {
             // handled later once the buffer gets unlocked (by handleSurfaceUnmapped)
             this->onSurfaceUnmapped(surface, item);
         }
+    if (item != nullptr) {
+        qInfo() << surface << item << "client pid:" << item->processId();
+    } else {
+        qWarning()  << "[WebOSSurfaceItem] Invalid pointer, "
+                    << "surface :" << surface;
+    }
+    QPointer<QWaylandSurface> pSurface(surface);
+    QPointer<WebOSSurfaceItem> pItem(item);
+
+    connect(pSurface, &QWaylandSurface::hasContentChanged, this, [this, pSurface, pItem] {
+        if (pSurface && pSurface->hasContent())
+            this->onSurfaceMapped(pSurface, pItem);
+        else if (pItem && pItem->surface()) // Avoid onSurfaceUnmapped when the surface is about to be destroyed
+            this->onSurfaceUnmapped(pSurface, pItem);
     });
 
-    connect(surface, &QWaylandSurface::destroyed, [this, surface, item] {
-        this->onSurfaceDestroyed(surface, item);
+    connect(pSurface, &QWaylandSurface::destroyed, this, [this, pSurface, pItem] {
+        this->onSurfaceDestroyed(pSurface, pItem);
     });
 
-    qInfo() << surface << item << "client pid:" << item->processId();
+    qInfo() << surface << item << "client info:" << (item ? item->processId() : "")
+        << ((surface && surface->client()) ? surface->client()->client() : nullptr);
 }
 
 WebOSSurfaceItem* WebOSCoreCompositor::createProxyItem(const QString& appId, const QString& title, const QString& subtitle, const QString& snapshotPath)
 {
     WebOSSurfaceItem *item = new WebOSSurfaceItem(this, NULL);
+    if (item == nullptr) {
+        qWarning()  << "[WebOSSurfaceItem] Invalid pointer, "
+                    << "appId :" << appId
+                    << "title :" << title
+                    << "subtitle :" << subtitle
+                    << "snapshotPath :" << snapshotPath;
+        return nullptr;
+    }
+
     item->setAppId(appId);
     item->setTitle(title);
     item->setSubtitle(subtitle);
@@ -740,9 +772,17 @@ WebOSSurfaceItem* WebOSCoreCompositor::createProxyItem(const QString& appId, con
 void WebOSCoreCompositor::deleteProxyFor(WebOSSurfaceItem* newItem)
 {
     PMTRACE_FUNCTION;
+    if (newItem == nullptr) {
+        qWarning() << "[WebOSSurfaceItem] Invalid pointer";
+        return;
+    }
     QMutableListIterator<WebOSSurfaceItem*> si(m_surfaces);
     while (si.hasNext()) {
         WebOSSurfaceItem* item = si.next();
+        if (item == nullptr) {
+            qWarning() << "[WebOSSurfaceItem] Invalid pointer";
+            continue;
+        }
         if (item->itemState() == WebOSSurfaceItem::ItemStateProxy
                 && newItem->appId() == item->appId()
                 && newItem != item) { //we don't want to remove item for mapped surface
@@ -766,6 +806,11 @@ void WebOSCoreCompositor::removeSurfaceItem(WebOSSurfaceItem* item, bool emitSur
 {
     PMTRACE_FUNCTION;
 
+    if (item == nullptr) {
+        qWarning()  << "[WebOSSurfaceItem] Invalid pointer, "
+                    << "emitSurfaceDestroyed :" << emitSurfaceDestroyed;
+        return;
+    }
     qInfo() << "removing item" << item << item->itemState() << item->itemStateReason();
     m_surfaceModel->surfaceDestroyed(item);
     if (emitSurfaceDestroyed)
@@ -884,6 +929,12 @@ WebOSSurfaceItem* WebOSCoreCompositor::getSurfaceItemByAppId(const QString& appI
     QMutableListIterator<WebOSSurfaceItem*> si(m_surfaces);
     while (si.hasNext()) {
         WebOSSurfaceItem* item = si.next();
+        if (item == nullptr) {
+            qWarning()  << "[WebOSSurfaceItem] Invalid pointer, "
+                        << "appId :" << appId;
+            continue;
+        }
+
         if (item->appId() == appId) {
             return item;
         }
@@ -921,6 +972,11 @@ void WebOSCoreCompositor::processSurfaceItem(WebOSSurfaceItem* item, WebOSSurfac
 {
     PMTRACE_FUNCTION;
 
+    if (item == nullptr) {
+        qWarning()  << "[WebOSSurfaceItem] Invalid pointer, "
+                    << "stateToBe :" << stateToBe;
+        return;
+    }
     qDebug() << item << item->itemState() << stateToBe << item->itemStateReason() << item->isSurfaced();
 
     // Possible state transitions
@@ -1031,6 +1087,10 @@ void WebOSCoreCompositor::processSurfaceItem(WebOSSurfaceItem* item, WebOSSurfac
 
 void WebOSCoreCompositor::destroyClientForWindow(QVariant window) {
     QWaylandSurface *surface = qobject_cast<QWaylandQuickItem *>(qvariant_cast<QObject *>(window))->surface();
+    if (surface == nullptr) {
+        qWarning()  << "[QWaylandSurface] Invalid pointer";
+        return;
+    }
     destroyClientForSurface(surface);
 }
 
@@ -1337,7 +1397,18 @@ void WebOSCoreCompositor::finalizeOutputUpdate()
 void WebOSCoreCompositor::onSurfaceSizeChanged()
 {
     QWaylandQuickSurface *surface = qobject_cast<QWaylandQuickSurface *>(sender());
+    if (surface == nullptr) {
+        qWarning()  << "[QWaylandQuickSurface] Invalid pointer, "
+                    << "sender :" << ( (sender() != nullptr) ? sender() : nullptr);
+        return;
+    }
+
     WebOSSurfaceItem* item = WebOSSurfaceItem::getSurfaceItemFromSurface(surface);
+    if (item == nullptr) {
+        qWarning()  << "[WebOSSurfaceItem] Invalid pointer, "
+                    << "surface :" << surface;
+        return;
+    }
 
     qDebug() << "OutputGeometry: size changed for item -" << item;
 
@@ -1364,7 +1435,7 @@ void WebOSCoreCompositor::initializeExtensions(WebOSCoreCompositor::ExtensionFla
     }
 
     if (extensions & WebOSCoreCompositor::WebOSForeignExtension)
-        m_foreign = new WebOSForeign(this);
+        m_foreign.reset(createWebOSForeign());
 }
 
 void WebOSCoreCompositor::initTestPluginLoader()
@@ -1492,3 +1563,14 @@ WaylandInputMethodManager* WebOSCoreCompositor::createInputMethodManager(Wayland
 {
     return new WaylandInputMethodManager(inputMethod);
 }
+
+WebOSForeign* WebOSCoreCompositor::createWebOSForeign()
+{
+    return new WebOSForeign(this);
+}
+
+WebOSInputManager* WebOSCoreCompositor::createInputManager()
+{
+    return new WebOSInputManager(this);
+}
+

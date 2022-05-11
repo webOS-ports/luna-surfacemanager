@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2021 LG Electronics, Inc.
+// Copyright (c) 2018-2022 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -189,6 +189,19 @@ void WebOSForeign::registeredWindow()
     }
 }
 
+WebOSExported* WebOSForeign::createExported(struct wl_client* client,
+                                            uint32_t id, WebOSSurfaceItem* surfaceItem,
+                                            WebOSExportedType exportedType)
+{
+    return new WebOSExported(this, client, id, surfaceItem, exportedType);
+}
+
+WebOSImported* WebOSForeign::createImported(WebOSExported *exported, struct wl_client *client,
+                                            uint32_t id, WebOSExportedType exportedType)
+{
+    return new WebOSImported(exported, client, id, exportedType);
+}
+
 void WebOSForeign::webos_foreign_export_element(Resource *resource,
                                                 uint32_t id,
                                                 struct ::wl_resource *surface,
@@ -199,9 +212,8 @@ void WebOSForeign::webos_foreign_export_element(Resource *resource,
         static_cast<QWaylandQuickSurface*>(qwls);
     WebOSSurfaceItem *surfaceItem = WebOSSurfaceItem::getSurfaceItemFromSurface(quickSurface);
     WebOSExported *pWebOSExported =
-        new WebOSExported(this, resource->client(), id,
-                          surfaceItem,
-                          (WebOSForeign::WebOSExportedType)exported_type);
+        createExported(resource->client(), id, surfaceItem,
+                       static_cast<WebOSForeign::WebOSExportedType>(exported_type));
 
     pWebOSExported->assignWindowId(generateWindowId());
     m_exportedList.append(pWebOSExported);
@@ -215,9 +227,10 @@ void WebOSForeign::webos_foreign_import_element(Resource *resource,
     qInfo() << "webos_foreign_import_element with " << window_id;
     foreach(WebOSExported* exported, m_exportedList) {
         if (exported->m_windowId == window_id) {
-            exported->m_importList.append(
-                new WebOSImported(exported, resource->client(), id,
-                                  (WebOSForeign::WebOSExportedType)exported_type));
+            WebOSImported *imported =
+                createImported(exported, resource->client(), id,
+                               static_cast<WebOSForeign::WebOSExportedType>(exported_type));
+            exported->m_importList.append(imported);
             return;
         }
     }
@@ -240,6 +253,9 @@ WebOSExported::WebOSExported(
     , m_surfaceItem(static_cast<WebOSSurfaceItem *>(surfaceItem))
     , m_exportedItem(new QQuickItem(surfaceItem))
     , m_exportedType(exportedType)
+    , m_coverVideo(false)
+    , m_activeRegion(QRect(0,0,0,0))
+    , m_originalRequestedRegion(QRect(0,0,0,0))
 {
     qInfo() << this << "is created";
     m_exportedItem->setClip(true);
@@ -262,7 +278,12 @@ WebOSExported::WebOSExported(
     connect(m_surfaceItem, &QWaylandQuickItem::surfaceDestroyed, this, &WebOSExported::onSurfaceDestroyed);
     connect(m_surfaceItem, &WebOSSurfaceItem::itemAboutToBeDestroyed, this, &WebOSExported::onSurfaceDestroyed);
     connect(m_surfaceItem, &WebOSSurfaceItem::windowChanged, this, &WebOSExported::updateCompositorWindow);
+    connect(m_surfaceItem, &WebOSSurfaceItem::coverStateChanged, this, &WebOSExported::updateCoverState);
+    connect(m_surfaceItem, &WebOSSurfaceItem::activeRegionChanged, this, &WebOSExported::updateActiveRegion);
+    connect(m_foreign->m_compositor, &WebOSCoreCompositor::surfaceMapped, this, &WebOSExported::onSurfaceItemMapped);
 
+    updateCoverState();
+    updateActiveRegion();
     calculateAll();
 
 #if 0 // DEBUG
@@ -308,6 +329,48 @@ WebOSExported::~WebOSExported()
         delete m_exportedItem;
 }
 
+void WebOSExported::onSurfaceItemMapped(WebOSSurfaceItem *mappedItem)
+{
+    if (!mappedItem) {
+        qWarning() << "mappedItem is null";
+        return;
+    }
+
+    qDebug() << "mappedItem : " << mappedItem << " on " << m_windowId;
+    if (m_surfaceItem == mappedItem) {
+        qInfo() << "Surface item of exported is mapped on " << m_windowId;
+        updateDisplayPosition(true);
+    }
+}
+
+void WebOSExported::updateDisplayPosition(bool forceUpdate)
+{
+#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+    if (!m_surfaceItem || m_surfaceItem->surface() == nullptr || m_surfaceItem->surface()->bufferSize().isValid() == false) {
+        qDebug() << "SurfaceItem  for " << m_windowId << " is already destroyed";
+        return;
+    }
+
+    QRectF globalPosition = m_surfaceItem->mapRectToScene(QRect(0,0,m_surfaceItem->surface()->bufferSize().width(), m_surfaceItem->surface()->bufferSize().height()));
+#else
+    if (!m_surfaceItem || m_surfaceItem->surface() == nullptr || m_surfaceItem->surface()->size().isValid() == false) {
+        qDebug() << "SurfaceItem  for " << m_windowId << " is already destroyed";
+        return;
+    }
+
+    QRectF globalPosition = m_surfaceItem->mapRectToScene(QRect(0,0,m_surfaceItem->surface()->size().width(), m_surfaceItem->surface()->size().height()));
+#endif
+    qDebug() << "globalPosition : " << globalPosition  << ", previous position : " << m_surfaceGlobalPosition << ", forceUpdate : " << forceUpdate << " on " << m_windowId;
+
+    if (globalPosition != m_surfaceGlobalPosition || forceUpdate) {
+        if (globalPosition.isValid()) {
+            qInfo() << "globalPosition : " << globalPosition  << ", previous position : " << m_surfaceGlobalPosition << ", forceUpdate : " << forceUpdate << " on " << m_windowId;
+            m_surfaceGlobalPosition = globalPosition;
+            calculateVideoDispRatio();
+        }
+    }
+}
+
 void WebOSExported::calculateVideoDispRatio()
 {
     qInfo() << "WebOSExported::calculateVideoDispRatio is called on " << m_windowId;
@@ -323,25 +386,45 @@ void WebOSExported::calculateVideoDispRatio()
 
     QRect outputGeometry = m_compositorWindow->outputGeometry();
 
-    if (m_isSurfaceItemFullscreen && outputGeometry.isValid() && m_surfaceItem->surface()) {
-        QPointF offset = m_surfaceItem->mapToItem(m_compositorWindow->viewsRoot(), QPointF(0.0, 0.0));
+    if (outputGeometry.isValid() && m_surfaceItem->surface()) {
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
-        m_videoDispRatio = (double) outputGeometry.width() / m_surfaceItem->surface()->bufferSize().width() * m_surfaceItem->scale();
-        qInfo() << "Output size:" << outputGeometry.size() << "surface size:" << m_surfaceItem->surface()->bufferSize() << "m_videoDispRatio:" << m_videoDispRatio;
+        if (!m_surfaceItem->surface()->bufferSize().isValid() || !m_surfaceGlobalPosition.isValid()) {
+            m_videoDispRatio = 1.0;
+            qInfo() << "video display ratio : " << m_videoDispRatio << ", surface size is not valid yet on " << m_windowId;
+        } else {
+            QRectF m_surfaceGlobalPosition = m_surfaceItem->mapRectToScene(QRect(0,0,m_surfaceItem->surface()->bufferSize().width(), m_surfaceItem->surface()->bufferSize().height()));
+
+            if (!m_isSurfaceItemFullscreen) {
+                m_videoDispRatio = qMin((double) m_surfaceGlobalPosition.width()/m_surfaceItem->surface()->bufferSize().width(), (double) m_surfaceGlobalPosition.height()/m_surfaceItem->surface()->bufferSize().height());
+                qInfo() << "video display ratio : " << m_videoDispRatio << ", (not fullscreen case) surface global position : " << m_surfaceGlobalPosition << ", surface size : " << m_surfaceItem->surface()->bufferSize() << " on " << m_windowId;
+            } else {
+                QPointF offset = m_surfaceItem->mapToItem(m_compositorWindow->viewsRoot(), QPointF(0.0, 0.0));
+                m_videoDispRatio = (double) outputGeometry.width() / m_surfaceItem->surface()->bufferSize().width() * m_surfaceItem->scale();
+                qInfo() << "Output size:" << outputGeometry.size() << "surface size:" << m_surfaceItem->surface()->bufferSize() << "m_videoDispRatio:" << m_videoDispRatio;
 #else
-        m_videoDispRatio = (double) outputGeometry.width() / m_surfaceItem->surface()->size().width() * m_surfaceItem->scale();
-        qInfo() << "Output size:" << outputGeometry.size() << "surface size:" << m_surfaceItem->surface()->size() << "m_videoDispRatio:" << m_videoDispRatio;
+        if (!m_surfaceItem->surface()->size().isValid() || !m_surfaceGlobalPosition.isValid()) {
+            m_videoDispRatio = 1.0;
+            qInfo() << "video display ratio : " << m_videoDispRatio << ", surface size is not valid yet on " << m_windowId;
+        } else {
+            QRectF m_surfaceGlobalPosition = m_surfaceItem->mapRectToScene(QRect(0,0,m_surfaceItem->surface()->size().width(), m_surfaceItem->surface()->size().height()));
+
+            if (!m_isSurfaceItemFullscreen) {
+                m_videoDispRatio = qMin((double) m_surfaceGlobalPosition.width()/m_surfaceItem->surface()->size().width(), (double) m_surfaceGlobalPosition.height()/m_surfaceItem->surface()->size().height());
+                qInfo() << "video display ratio : " << m_videoDispRatio << ", (not fullscreen case) surface global position : " << m_surfaceGlobalPosition << ", surface size : " << m_surfaceItem->surface()->size() << " on " << m_windowId;
+            } else {
+                QPointF offset = m_surfaceItem->mapToItem(m_compositorWindow->viewsRoot(), QPointF(0.0, 0.0));
+                m_videoDispRatio = (double) outputGeometry.width() / m_surfaceItem->surface()->size().width() * m_surfaceItem->scale();
+                qInfo() << "Output size:" << outputGeometry.size() << "surface size:" << m_surfaceItem->surface()->size() << "m_videoDispRatio:" << m_videoDispRatio;
 #endif
-        qInfo() << "Item scale:" << m_surfaceItem->scale() << "item offset:" << offset;
-        if (m_requestedRegion.isValid() && m_videoDisplayRect.isValid()) {
-            m_videoDisplayRect.setX((int) (m_requestedRegion.x()*m_videoDispRatio + offset.x()));
-            m_videoDisplayRect.setY((int) (m_requestedRegion.y()*m_videoDispRatio + offset.y()));
-            m_videoDisplayRect.setWidth((int) (m_requestedRegion.width()*m_videoDispRatio));
-            m_videoDisplayRect.setHeight((int) (m_requestedRegion.height()*m_videoDispRatio));
+            }
+        }
 
+        if (m_requestedRegion.isValid()) {
+            setVideoDisplayRect();
             qInfo() << "Calculated video display output region:" << m_videoDisplayRect;
-
             setVideoDisplayWindow();
+        } else {
+           qWarning() << "Requested video region is not valid";
         }
     }
 }
@@ -381,7 +464,7 @@ void WebOSExported::calculateExportedItemRatio()
 
 void WebOSExported::calculateAll()
 {
-    calculateVideoDispRatio();
+    updateDisplayPosition(true);
     calculateExportedItemRatio();
 }
 
@@ -394,15 +477,63 @@ void WebOSExported::updateWindowState()
     WebOSSurfaceItem *item = qobject_cast<WebOSSurfaceItem*>(m_surfaceItem);
     qInfo() << "update window state : " << item->state() << "for WebOSExported ( " << m_windowId << " ) ";
     m_isSurfaceItemFullscreen = item->state() == Qt::WindowFullScreen;
-    if (m_isSurfaceItemFullscreen)
-        calculateAll();
+    if (m_isSurfaceItemFullscreen) {
+        calculateVideoDispRatio();
+        calculateExportedItemRatio();
+    }
+}
+
+void WebOSExported::updateCoverState()
+{
+    if (!m_surfaceItem) {
+        qWarning() << "WebOSSurfaceItem for " << m_windowId << "is already destroyed";
+        return;
+    }
+
+    bool coverVideo = false;
+    if (m_surfaceItem->coverState() == WebOSSurfaceItem::CoverStateHidden) {
+        coverVideo = true;
+    }
+
+    if (m_coverVideo != coverVideo) {
+        qInfo() << "cover state is changed = " << coverVideo << " for WebOSExported (" << m_windowId << ")";
+        m_coverVideo = coverVideo;
+        calculateVideoDispRatio();
+    }
+}
+
+void WebOSExported::updateActiveRegion()
+{
+    if (!m_surfaceItem) {
+        qWarning() << "WebOSSurfaceItem for " << m_windowId << "is already destroyed";
+        return;
+    }
+
+    QRect activeRegion = m_surfaceItem->activeRegion();
+
+    if (m_activeRegion != activeRegion) {
+        qInfo() << "active region is changed = " << activeRegion << " for WebOSExported (" << m_windowId << ")";
+        m_activeRegion = activeRegion;
+        updateDestinationRegionByActiveRegion();
+
+        setDestinationRect();
+        setVideoDisplayRect();
+
+        qInfo() << "exported requested destination region : " << m_requestedRegion << " on " << m_windowId;
+        qInfo() << "exported item region : " << m_destinationRect << ", video display region : " << m_videoDisplayRect;
+        qInfo() << "exported item ratio : " << m_exportedWindowRatio << ", video display ratio :  " << m_videoDispRatio;
+
+        setVideoDisplayWindow();
+        updateExportedItemSize();
+    }
 }
 
 void WebOSExported::updateVisible()
 {
-    if (!m_exportedItem)
-        qWarning() << "WebOSSurfaceItem for " << m_windowId << " is  already destroyed ";
-
+    if (!m_exportedItem) {
+        qWarning() << "QWaylandQuickItem for " << m_windowId << " is  already destroyed ";
+        return;
+    }
     if (!m_contextId.isNull()) {
         if (m_exportedItem->isVisible()) {
             qInfo() << "exported item's visible is changed to true on " << m_windowId;
@@ -422,6 +553,10 @@ void WebOSExported::onSurfaceDestroyed()
     updateCompositorWindow(nullptr);
 
     if (m_exportedItem) {
+        foreach(WebOSImported* imported, m_importList) {
+            if (imported)
+                imported->childSurfaceDestroyed();
+        }
         delete m_exportedItem;
         m_exportedItem = nullptr;
     }
@@ -437,9 +572,25 @@ void WebOSExported::updateVideoWindowList(QString contextId, QRect videoDisplayR
     if (needRemove || !m_exportedItem) {
         VideoWindowInformer::instance()->removeVideoWindowList(contextId);
     } else {
-         if (!m_contextId.isNull() && m_exportedItem->isVisible()) {
-            VideoWindowInformer::instance()->insertVideoWindowList(contextId, videoDisplayRect, m_windowId);
-         }
+        if(!m_contextId.isNull() && m_exportedItem->isVisible() && m_surfaceItem) {
+            QString appId = m_surfaceItem ? m_surfaceItem->appId() : "";
+            qreal scaleFactor = m_surfaceItem->scale();
+            QRect appWindow;
+            if (m_activeRegion.isValid()) {
+                appWindow = QRect(
+                    m_surfaceGlobalPosition.x() + m_activeRegion.x()*scaleFactor,
+                    m_surfaceGlobalPosition.y() + m_activeRegion.y()*scaleFactor,
+                    m_activeRegion.width()*scaleFactor,
+                    m_activeRegion.height()*scaleFactor);
+            } else {
+                appWindow = QRect(
+                    m_surfaceGlobalPosition.x(),
+                    m_surfaceGlobalPosition.y(),
+                    m_surfaceItem->width()*scaleFactor,
+                    m_surfaceItem->height()*scaleFactor);
+            }
+            VideoWindowInformer::instance()->insertVideoWindowList(contextId, videoDisplayRect, m_windowId, appId, appWindow);
+        }
     }
 }
 
@@ -469,7 +620,15 @@ void WebOSExported::updateExportedItemSize()
 
 void WebOSExported::setVideoDisplayWindow()
 {
+    QRect videoDisplayRect;
     if (m_foreign->m_compositor->window() && !m_contextId.isNull()) {
+        if (m_coverVideo) {
+            qInfo() << "cover video state. set video display rect = (0, 0, 0, 0)";
+            videoDisplayRect = QRect(0, 0, 0, 0);
+        } else {
+            qDebug() << "Not cover state. Keep video display rect";
+            videoDisplayRect = m_videoDisplayRect;
+        }
         if (m_directVideoScalingMode) {
             qDebug() << "Direct video scaling mode is enabled. Do not call setDisplayWindow.";
         } else {
@@ -483,7 +642,58 @@ void WebOSExported::setVideoDisplayWindow()
     }
 
     if (!m_contextId.isNull())
-        updateVideoWindowList(m_contextId, m_videoDisplayRect, false);
+        updateVideoWindowList(m_contextId, videoDisplayRect, false);
+}
+
+void WebOSExported::updateDestinationRegionByActiveRegion()
+{
+    bool isSetRegion = false;
+    if (m_activeRegion.isValid()) {
+        if (m_originalRequestedRegion.x() < m_activeRegion.x() || m_originalRequestedRegion.y() < m_activeRegion.y() ||
+                m_originalRequestedRegion.x() + m_originalRequestedRegion.width() > m_activeRegion.x() + m_activeRegion.width() ||
+	            m_originalRequestedRegion.y() + m_originalRequestedRegion.height() > m_activeRegion.y() + m_activeRegion.height()) {
+
+                    if (m_originalRequestedRegion.isValid()) {
+                        double scale = qMin((double)(m_activeRegion.width()) / (double)(m_originalRequestedRegion.width()), (double)(m_activeRegion.height()) / (double)(m_originalRequestedRegion.height()));
+                        qInfo() << "Requested region is out of bounds of active region. scale = " << scale;
+
+                        int x = (int)(m_activeRegion.x() + (m_activeRegion.width() - m_originalRequestedRegion.width()*scale)*0.5);
+                        int y = (int)(m_activeRegion.y() + (m_activeRegion.height() - m_originalRequestedRegion.height()*scale)*0.5);
+                        int width = (int)(m_originalRequestedRegion.width()*scale);
+                        int height = (int)(m_originalRequestedRegion.height()*scale);
+                        m_requestedRegion = QRect(x, y, width, height);
+                        isSetRegion = true;
+                    }
+                }
+	}
+
+    if (isSetRegion == false)
+        m_requestedRegion = m_originalRequestedRegion;
+}
+
+void WebOSExported::setDestinationRect() {
+    m_destinationRect = QRect(
+        (int) (m_requestedRegion.x()*m_exportedWindowRatio),
+        (int) (m_requestedRegion.y()*m_exportedWindowRatio),
+        (int) (m_requestedRegion.width()*m_exportedWindowRatio),
+        (int) (m_requestedRegion.height()*m_exportedWindowRatio));
+}
+
+void WebOSExported::setVideoDisplayRect() {
+
+    if (m_activeRegion.isValid()) {
+        m_videoDisplayRect = QRect(
+            round(m_surfaceGlobalPosition.x() + m_requestedRegion.x()*m_videoDispRatio),
+            round(m_surfaceGlobalPosition.y() + m_requestedRegion.y()*m_videoDispRatio),
+            round(m_requestedRegion.width()*m_videoDispRatio),
+            round(m_requestedRegion.height()*m_videoDispRatio));
+    } else {
+        m_videoDisplayRect = QRect(
+            (int) (m_surfaceGlobalPosition.x() + m_requestedRegion.x()*m_videoDispRatio),
+            (int) (m_surfaceGlobalPosition.y() + m_requestedRegion.y()*m_videoDispRatio),
+            (int) (m_requestedRegion.width()*m_videoDispRatio),
+            (int) (m_requestedRegion.height()*m_videoDispRatio));
+    }
 }
 
 void WebOSExported::setDestinationRegion(struct::wl_resource *destination_region)
@@ -493,38 +703,27 @@ void WebOSExported::setDestinationRegion(struct::wl_resource *destination_region
             QtWayland::Region::fromResource(
                 destination_region)->region();
         if (qwlDestinationRegion.boundingRect().isValid()) {
-            m_requestedRegion = QRect(
+            m_originalRequestedRegion = QRect(
                 qwlDestinationRegion.boundingRect().x(),
                 qwlDestinationRegion.boundingRect().y(),
                 qwlDestinationRegion.boundingRect().width(),
                 qwlDestinationRegion.boundingRect().height());
         } else {
-            m_requestedRegion = QRect(0, 0, 0, 0);
+            m_originalRequestedRegion = QRect(0, 0, 0, 0);
         }
 
-        m_destinationRect = QRect(
-            (int) (m_requestedRegion.x()*m_exportedWindowRatio),
-            (int) (m_requestedRegion.y()*m_exportedWindowRatio),
-            (int) (m_requestedRegion.width()*m_exportedWindowRatio),
-            (int) (m_requestedRegion.height()*m_exportedWindowRatio));
+        updateDestinationRegionByActiveRegion();
+        setDestinationRect();
+        setVideoDisplayRect();
 
-        QPointF offset(0.0, 0.0);
+        qInfo() << "exported original requested destination region : " << m_originalRequestedRegion << " on " << m_windowId;
+        qInfo() << "exported requested destination region : " << m_requestedRegion << " on " << m_windowId;
+        qInfo() << "exported item region : " << m_destinationRect << ", video display region : " << m_videoDisplayRect;
+        qInfo() << "exported item ratio : " << m_exportedWindowRatio << ", video display ratio :  " << m_videoDispRatio;
 
-        if (m_surfaceItem && m_compositorWindow)
-            offset = m_surfaceItem->mapToItem(m_compositorWindow->viewsRoot(), offset);
-
-        m_videoDisplayRect = QRect(
-            (int) (m_requestedRegion.x()*m_videoDispRatio + offset.x()),
-            (int) (m_requestedRegion.y()*m_videoDispRatio + offset.y()),
-            (int) (m_requestedRegion.width()*m_videoDispRatio),
-            (int) (m_requestedRegion.height()*m_videoDispRatio));
-
-        qInfo() << "exported_window destination region:" << m_destinationRect << "on" << m_windowId;
-        qInfo() << "video display output region:" << m_videoDisplayRect << "at" << offset << "on" << m_windowId;
+        setVideoDisplayWindow();
+        updateExportedItemSize();
     }
-
-    setVideoDisplayWindow();
-    updateExportedItemSize();
 }
 
 void WebOSExported::updateCompositorWindow(QQuickWindow *window)
@@ -683,14 +882,16 @@ void WebOSExported::assignWindowId(QString windowId)
 
 WebOSSurfaceItem *WebOSExported::getImportedItem()
 {
-    if (!m_exportedItem || m_exportedItem->childItems().isEmpty())
+    QQuickItem *childDisplayItem = m_exportedItem && !m_exportedItem->childItems().isEmpty() ? m_exportedItem->childItems().first() : nullptr;
+
+    if (!childDisplayItem || childDisplayItem->childItems().isEmpty())
         return nullptr;
 
-    if (m_exportedItem->childItems().size() > 1)
+    if (childDisplayItem->childItems().size() > 1)
         qWarning() << "more than one imported item for WebOSExported" << m_surfaceItem;
 
     // Imported surface item
-    return static_cast<WebOSSurfaceItem *>(m_exportedItem->childItems().first());
+    return static_cast<WebOSSurfaceItem *>(childDisplayItem->childItems().first());
 }
 
 bool WebOSExported::hasSecuredContent()
@@ -709,14 +910,14 @@ bool WebOSExported::hasSecuredContent()
     return false;
 }
 
-void WebOSExported::setParentOf(QQuickItem *item)
+void WebOSExported::setParentOf(QQuickItem *item, QQuickItem *childDisplayItem)
 {
     if (!m_surfaceItem || !m_exportedItem) {
         qWarning() << "unexpected null reference" << m_surfaceItem << m_exportedItem;
         return;
     }
 
-    item->setParentItem(m_exportedItem);
+    item->setParentItem(childDisplayItem);
 
     // mirrored items
     foreach(WebOSSurfaceItem *parent, m_surfaceItem->mirrorItems())
@@ -846,34 +1047,54 @@ void WebOSImported::destroyResource()
 
 void WebOSImported::setSurfaceItemSize()
 {
-    if (m_childSurfaceItem && m_exported && m_exported->m_exportedItem) {
-        qInfo() << "set surface item's width : " << m_exported->m_exportedItem->width();
-        qInfo() << "set surface item's height : " << m_exported->m_exportedItem->height();
+    if (m_childSurfaceItem && m_childDisplayItem && m_exported && m_exported->m_exportedItem) {
+        if (m_textureAlign != WebOSImported::surface_alignment::surface_alignment_crop ||
+                !m_exported->m_originalInputRect.isValid()) {
+            qInfo() << "set surface item's width : " << m_exported->m_exportedItem->width() << this;
+            qInfo() << "set surface item's height : " << m_exported->m_exportedItem->height() << this;
 
-        m_childSurfaceItem->setWidth(m_exported->m_exportedItem->width());
-        m_childSurfaceItem->setHeight(m_exported->m_exportedItem->height());
+            m_childDisplayItem->setWidth(m_exported->m_exportedItem->width());
+            m_childDisplayItem->setHeight(m_exported->m_exportedItem->height());
+
+            m_childSurfaceItem->setWidth(m_childDisplayItem->width());
+            m_childSurfaceItem->setHeight(m_childDisplayItem->height());
+            m_childSurfaceItem->setX(0);
+            m_childSurfaceItem->setY(0);
+        } else {
+            double widthRatio = double(m_exported->m_destinationRect.width()) / double(m_exported->m_sourceRect.width());
+            double heightRatio = double(m_exported->m_destinationRect.height()) / double(m_exported->m_sourceRect.height());
+
+            qInfo() << "Crop surface item's destination : "
+                            << m_exported->m_destinationRect.width() << "x"
+                            << m_exported->m_destinationRect.height() << this;
+            qInfo() << "Crop surface item's coord : "
+                            << (int)((m_exported->m_originalInputRect.x() - m_exported->m_sourceRect.x()) * widthRatio) << ","
+                            << (int)((m_exported->m_originalInputRect.y() - m_exported->m_sourceRect.y()) * heightRatio) << ","
+                            << (int)(m_exported->m_originalInputRect.width() * widthRatio) << "x"
+                            << (int)(m_exported->m_originalInputRect.height() * heightRatio) << widthRatio << heightRatio << this;
+
+            m_childDisplayItem->setWidth(m_exported->m_destinationRect.width());
+            m_childDisplayItem->setHeight(m_exported->m_destinationRect.height());
+
+            m_childSurfaceItem->setWidth((int)(m_exported->m_originalInputRect.width() * widthRatio));
+            m_childSurfaceItem->setHeight((int)(m_exported->m_originalInputRect.height() * heightRatio));
+            m_childSurfaceItem->setX((int)((m_exported->m_originalInputRect.x() - m_exported->m_sourceRect.x()) * widthRatio));
+            m_childSurfaceItem->setY((int)((m_exported->m_originalInputRect.y() - m_exported->m_sourceRect.y()) * heightRatio));
+        }
+        //TODO: handle other cases.
     }
 }
 
 void WebOSImported::updateGeometry()
 {
     if (m_childSurfaceItem) {
-        switch (m_textureAlign) {
-        case WebOSImported::surface_alignment::surface_alignment_stretch:
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
             connect(m_childSurfaceItem->surface(), &QWaylandSurface::bufferSizeChanged, this, &WebOSImported::setSurfaceItemSize);
 #else
-            connect(m_childSurfaceItem->surface(), &QWaylandSurface::sizeChanged, this, &WebOSImported::setSurfaceItemSize);
+            connect(m_childSurfaceItem->surface(), &QWaylandSurface::sizeChanged, this, &WebOSImported::setSurfaceItemSize, Qt::UniqueConnection);
 #endif
-            if (m_exported && m_exported->m_exportedItem) {
-                qInfo() << m_childSurfaceItem << "fits to" << m_exported->m_exportedItem;
-                m_childSurfaceItem->setWidth(m_exported->m_exportedItem->width());
-                m_childSurfaceItem->setHeight(m_exported->m_exportedItem->height());
-            }
-            break;
-        }
-        //TODO: handle other cases.
     }
+    setSurfaceItemSize();
 
     if (m_exported && m_exported->m_exportedItem) {
         send_destination_region_changed(m_exported->m_exportedItem->width(),
@@ -901,7 +1122,7 @@ void WebOSImported::detach()
 
 void WebOSImported::updateExported(WebOSExported * exported)
 {
-    qInfo() << "WebOSImported::detach is called " << this;
+    qInfo() << "WebOSImported::updateExported is called " << this;
 
     if (m_exported == exported)
         return;
@@ -953,6 +1174,7 @@ void WebOSImported::webos_imported_attach_punchthrough_with_context(Resource* r,
     if (m_exported->m_requestedRegion.isValid())
         m_exported->setVideoDisplayWindow();
 
+    m_exported->updateDisplayPosition(true);
     m_exported->setPunchThrough(true);
     send_punchthrough_attached(contextId);
 }
@@ -997,11 +1219,21 @@ void WebOSImported::webos_imported_destroy_resource(Resource* r)
     delete this;
 }
 
+void WebOSImported::destroyChildDisplay()
+{
+    qInfo() << "destroyChildDisplay is called on " << this;
+    if (m_childDisplayItem) {
+        delete m_childDisplayItem;
+        m_childDisplayItem = nullptr;
+    }
+}
+
 void WebOSImported::childSurfaceDestroyed()
 {
     qInfo() << "childSurfaceDestroyed is called on " << this;
     if (m_childSurfaceItem)
         m_childSurfaceItem = nullptr;
+    destroyChildDisplay();
 }
 
 void WebOSImported::webos_imported_attach_surface(
@@ -1018,13 +1250,17 @@ void WebOSImported::webos_imported_attach_surface(
     qInfo() << qwlSurface << "from" << surface;
 
     m_childSurfaceItem = WebOSSurfaceItem::getSurfaceItemFromSurface(qwlSurface);
+    if (!m_childDisplayItem) {
+        m_childDisplayItem = new QQuickItem(m_exported->m_exportedItem);
+    }
+    m_childDisplayItem->setClip(true);
     connect(m_childSurfaceItem->surface(), &QWaylandSurface::surfaceDestroyed, this, &WebOSImported::childSurfaceDestroyed);
     m_childSurfaceItem->setImported(true);
-    m_exported->setParentOf(m_childSurfaceItem);
     // Applying direct update after the child surface item belongs to a window
     m_childSurfaceItem->setDirectUpdateOnPlane(m_exported->surfaceItem()->directUpdateOnPlane());
     connect(m_exported->surfaceItem(), &WebOSSurfaceItem::directUpdateOnPlaneChanged, m_childSurfaceItem, &WebOSSurfaceItem::updateDirectUpdateOnPlane);
-    m_childSurfaceItem->setZ(m_exported->m_exportedItem->z()+m_z_index);
+    m_exported->setParentOf(m_childSurfaceItem, m_childDisplayItem);
+    m_childDisplayItem->setZ(m_exported->m_exportedItem->z()+m_z_index);
     updateGeometry();  //Resize texture if needed.
     if (m_importedType == WebOSForeign::WebOSExportedType::VideoObject)
         VideoOutputdCommunicator::instance()->setProperty("videoTexture", "on", NULL);
@@ -1035,7 +1271,7 @@ void WebOSImported::webos_imported_detach_surface(
         Resource * resource,
         struct ::  wl_resource *surface)
 {
-    qInfo() <<"detach_surface is called : " << surface << " on " << this ;
+    qInfo() <<"detach_surface is called : " << surface << " on " << this;
 
     if (!m_childSurfaceItem || m_childSurfaceItem->surface()->resource() != surface) {
         qWarning() << "surface is not the attached surface";
@@ -1046,6 +1282,8 @@ void WebOSImported::webos_imported_detach_surface(
         VideoOutputdCommunicator::instance()->setProperty("videoTexture", "off", NULL);
     disconnect(m_childSurfaceItem->surface(), &QWaylandSurface::surfaceDestroyed, this, &WebOSImported::childSurfaceDestroyed);
     m_childSurfaceItem->setParentItem(nullptr);
+    if (m_childDisplayItem)
+        m_childDisplayItem->setParentItem(nullptr);
     send_surface_detached(m_childSurfaceItem->surface()->resource());
     childSurfaceDestroyed();
 }
@@ -1057,5 +1295,16 @@ void WebOSImported::webos_imported_set_z_index(
     if (m_z_index != z_index) {
         m_z_index = z_index;
         qInfo() << "z_index of WebOSImported (" << this << " ) is changed to " << z_index;
+    }
+}
+
+void WebOSImported::webos_imported_set_surface_alignment(
+        Resource * resource,
+        uint32_t surface_alignment)
+{
+    if (m_textureAlign != (WebOSImported::surface_alignment)surface_alignment) {
+        m_textureAlign = (WebOSImported::surface_alignment)surface_alignment;
+        qInfo() << "m_textureAlign of WebOSImported (" << this << " ) is changed to " << surface_alignment;
+        setSurfaceItemSize();
     }
 }

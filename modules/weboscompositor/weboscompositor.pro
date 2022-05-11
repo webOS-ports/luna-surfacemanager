@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2021 LG Electronics, Inc.
+# Copyright (c) 2014-2022 LG Electronics, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,6 +43,11 @@ DEFINES += QT_WAYLAND_COMPOSITOR_QUICK
 # TODO: remove this from here
 CONFIG += config_xcomposite config_glx
 
+# install_private_headers is missing in build/modules/weboscompositor/Makefile without this
+# See qt_installs.prf from qtbase
+# generated_privates: private_headers.CONFIG += no_check_exist
+CONFIG += generated_privates
+
 # Input
 HEADERS += \
     weboswindowmodel.h \
@@ -64,7 +69,8 @@ HEADERS += \
     weboswaylandseat.h \
     webossurface.h \
     compositorextensionfactory.h \
-    unixsignalhandler.h
+    unixsignalhandler.h \
+    updatescheduler.h
 
 SOURCES += \
     weboswindowmodel.cpp \
@@ -84,7 +90,8 @@ SOURCES += \
     weboswaylandseat.cpp \
     webossurface.cpp \
     compositorextensionfactory.cpp \
-    unixsignalhandler.cpp
+    unixsignalhandler.cpp \
+    updatescheduler.cpp
 
 !no_multi_input {
     # Multiple input support

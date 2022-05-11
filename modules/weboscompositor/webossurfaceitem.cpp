@@ -88,6 +88,8 @@ WebOSSurfaceItem::WebOSSurfaceItem(WebOSCoreCompositor* compositor, QWaylandQuic
         , m_closePolicy(QVariantMap())
         , m_itemStateReason(QString())
         , m_launchLastApp(false)
+        , m_coverState(CoverStateNormal)
+        , m_activeRegion(QRect(0,0,0,0))
 {
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
     setAcceptTouchEvents(true);
@@ -679,10 +681,10 @@ void WebOSSurfaceItem::processKeyEvent(QKeyEvent *event)
         keyboard->currentGrab()) {
 
         if (hasFocus()) {
-            qInfo() << "Focused none-group nor grabbed item: " << this << event->key();
+            qInfo() << "Focused surface is not a group member and not a current keyboard grab: " << this << event->key();
             inputDevice->sendFullKeyEvent(event);
         } else {
-            qInfo() << "Not focused none-group nor grabbed item: " << this << event->key();
+            qInfo() << "Surface is not focused and not a current keyboard grab. Do not send key: " << this << event->key();
         }
         return;
     }
@@ -828,6 +830,7 @@ void WebOSSurfaceItem::setAppId(const QString& appId, bool updateProperty)
         emit appIdChanged();
         if (updateProperty)
             setWindowProperty(QLatin1String("appId"), m_appId);
+        qInfo() << "appIdChanged:" << surface() << this;
     }
 }
 
@@ -842,6 +845,7 @@ void WebOSSurfaceItem::setType(const QString& type, bool updateProperty)
         emit typeChanged();
         if (updateProperty)
             setWindowProperty(QLatin1String("_WEBOS_WINDOW_TYPE"), m_type);
+        qInfo() << "typeChanged:" << surface() << this;
     }
 }
 
@@ -1069,6 +1073,24 @@ void WebOSSurfaceItem::setClosePolicy(QVariantMap &policy)
         m_closePolicy = policy;
 
         emit closePolicyChanged();
+    }
+}
+
+void WebOSSurfaceItem::setCoverState(CoverState coverState)
+{
+    if (m_coverState != coverState) {
+        m_coverState = coverState;
+
+        emit coverStateChanged();
+    }
+}
+
+void WebOSSurfaceItem::setActiveRegion(const QRect & activeRegion)
+{
+    if (m_activeRegion != activeRegion) {
+        m_activeRegion = activeRegion;
+
+        emit activeRegionChanged();
     }
 }
 
@@ -1702,3 +1724,14 @@ QSGNode *WebOSSurfaceItem::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData
     return QWaylandQuickItem::updatePaintNode(oldNode, data);
 }
 #endif
+
+WebOSSurfaceItem* WebOSSurfaceItem::currentKeyFocusedItem()
+{
+    if (m_surfaceGroup) {
+        qInfo() << "Item has surfaceGroup";
+        return m_surfaceGroup->findKeyFocusedItem();
+    } else {
+        qInfo() << "Item does not have surfaceGroup";
+        return NULL;
+    }
+}

@@ -83,6 +83,8 @@ class WEBOS_COMPOSITOR_EXPORT WebOSSurfaceItem : public QWaylandQuickItem
     Q_PROPERTY(ItemState itemState READ itemState WRITE setItemState NOTIFY itemStateChanged)
     Q_PROPERTY(QString itemStateReason READ itemStateReason NOTIFY itemStateReasonChanged)
     Q_PROPERTY(QVariantMap closePolicy READ closePolicy WRITE setClosePolicy NOTIFY closePolicyChanged RESET unsetClosePolicy)
+    Q_PROPERTY(CoverState coverState READ coverState WRITE setCoverState NOTIFY coverStateChanged)
+    Q_PROPERTY(QRect activeRegion READ activeRegion WRITE setActiveRegion NOTIFY activeRegionChanged)
 
     Q_PROPERTY(Qt::WindowState state READ state WRITE setState NOTIFY stateChanged)
     Q_PROPERTY(bool notifyPositionToClient READ notifyPositionToClient WRITE setNotifyPositionToClient NOTIFY notifyPositionToClientChanged)
@@ -170,6 +172,12 @@ public:
         AddonStatusError,
     };
     Q_ENUM(AddonStatus)
+
+    enum CoverState {
+        CoverStateNormal = 1,
+        CoverStateHidden
+    };
+    Q_ENUM(CoverState)
 
     WebOSSurfaceItem(WebOSCoreCompositor* compositor, QWaylandQuickSurface* surface);
     ~WebOSSurfaceItem();
@@ -303,6 +311,26 @@ public:
      * Function to unset close policy for this surface.
      */
     void unsetClosePolicy() { m_closePolicy.clear(); }
+
+    /*!
+     * Convenience function to return the cover state for this surface.
+     */
+    CoverState coverState() { return m_coverState; }
+
+    /*!
+     * Function to set close policy for this surface.
+     */
+    void setCoverState(CoverState coverState);
+
+    /*!
+     * Convenience function to return the active region for this surface.
+     */
+    QRect activeRegion() { return m_activeRegion; }
+
+    /*!
+     * Function to set active region for this surface.
+     */
+    void setActiveRegion(const QRect & activeRegion);
 
     /*!
      * Convenience function to return the _WEBOS_LAUNCH_PREV_APP_AFTER_CLOSING for this surface.
@@ -481,6 +509,8 @@ public:
     QSGNode *updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *data) override;
 #endif
 
+    WebOSSurfaceItem* currentKeyFocusedItem();
+
 public slots:
     void updateScreenPosition();
     void updateProperties(const QVariantMap &properties, const QString &name, const QVariant &value);
@@ -533,6 +563,8 @@ signals:
     void itemStateReasonChanged();
     void closePolicyChanged();
     void positionUpdated();
+    void coverStateChanged();
+    void activeRegionChanged();
 
     void surfaceGroupChanged();
 
@@ -620,6 +652,8 @@ private:
     WebOSSurfaceGroup* m_surfaceGroup;
 
     QVariantMap m_closePolicy;
+    CoverState m_coverState;
+    QRect m_activeRegion;
 
     int m_cursorHotSpotX = -1;
     int m_cursorHotSpotY = -1;
