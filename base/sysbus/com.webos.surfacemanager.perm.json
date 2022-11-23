@@ -1,5 +1,29 @@
 {
     "com.webos.surfacemanager*": [
-        "all"
+        "account.query",
+        "application.launcher",
+        "application.operation",
+        "appmanager.management",
+        "appmanager.operation",
+        "audio.operation",
+        "audio.query",
+        "boot.query",
+        "database.operation",
+        "luna-sysmgr.operation",
+        "media.displayControl",
+        "media.displayInfo",
+        "networkconnection.query",
+        "networkconnection.management",
+        "notification.management",
+        "notification.operation",
+        "powerd.management",
+        "settings.management",
+        "settings.query",
+        "systemconfig.management",
+        "systemconfig.query",
+        "systemsettings.query",
+        "telephony.management",
+        "wifi.query",
+        "wifi.management"
     ]
 }

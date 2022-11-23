@@ -1,18 +1,6 @@
 {
-    "launcher.control": {
-        "description": "take action on launcher components",
-        "public": false
-    },
-    "launcher.status": {
-        "description": "get status of launcher components",
-        "public": false
-    },
-    "surfaces.control": {
-        "description": "take action on surfaces",
-        "public": false
-    },
-    "surfaces.status": {
-        "description": "get status of surfaces",
-        "public": false
-    }
+    "allowedNames": ["com.webos.surfacemanager*"],
+    "surfacemanager.devutility": ["oem"],
+    "surfacemanager.operation": ["oem"],
+    "surfacemanager.query": ["oem"]
 }
