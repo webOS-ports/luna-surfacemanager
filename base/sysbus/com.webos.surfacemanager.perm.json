@@ -23,6 +23,7 @@
         "systemconfig.query",
         "systemsettings.query",
         "telephony.management",
+        "tweaks-service.operation",
         "wifi.query",
         "wifi.management"
     ]
