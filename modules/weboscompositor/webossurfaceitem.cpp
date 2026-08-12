@@ -1105,7 +1105,10 @@ void WebOSSurfaceItem::close()
         sendCloseToGroupItems();
         m_shellSurface->close();
     } else {
-        qWarning() << "No webos shell surface exist, cannot close";
+        qWarning() << "No webos shell surface exist, will close entire client !";
+        if (surface() && surface()->client()) {
+            surface()->client()->close();
+        }
     }
 }
 
