@@ -239,6 +239,7 @@ WebOSCoreCompositor::WebOSCoreCompositor(ExtensionFlags extensions, const char *
     , m_inputManager(0)
     , m_surfaceModel(nullptr)
     , m_wlShell(new QWaylandWlShell(this))
+    , m_xdgShell(new QWaylandXdgShell(this))
 #ifdef MULTIINPUT_SUPPORT
     , m_lastMouseEventFrom(0)
     , m_inputDevicePreallocated(0)
@@ -256,6 +257,42 @@ WebOSCoreCompositor::WebOSCoreCompositor(ExtensionFlags extensions, const char *
         surface->initialize(this, client, id, version);
     });
     connect(this, &QWaylandCompositor::surfaceCreated, this, &WebOSCoreCompositor::surfaceCreated);
+
+    /* xdg_shell is the only window protocol still implemented by current
+     * toolkits: wl_shell was deprecated in 2016 and removed from SDL2 in
+     * 2.0.16, from GTK4, and from Qt's own client. Without xdg_wm_base such a
+     * client connects, binds wl_compositor, and then has no way to give its
+     * surface a role - so it never attaches a buffer, hasContent() stays false
+     * and no WebOSSurfaceItem is ever mapped. The window silently never appears.
+     *
+     * Surface handling here is already role-agnostic: items come from
+     * QWaylandCompositor::surfaceCreated. All that is needed is to advertise
+     * the global and answer the initial configure. xdg_shell requires the
+     * compositor to configure a toplevel before the client may attach its
+     * first buffer, and webOS surfaces are fullscreen at the output size.
+     */
+    connect(m_xdgShell, &QWaylandXdgShell::toplevelCreated, this,
+            [this](QWaylandXdgToplevel *toplevel, QWaylandXdgSurface *xdgSurface) {
+        QSize size;
+        if (QWaylandOutput *output = defaultOutput())
+            size = output->geometry().size();
+        if (size.isEmpty())
+            size = QSize(1920, 1080);
+
+        qInfo() << "xdg_toplevel created" << toplevel << "configuring fullscreen" << size;
+        toplevel->sendFullscreen(size);
+
+        /* Carry appId across to the surface item. wl_webos_shell clients set it
+         * through WebOSShellSurface; xdg_shell clients set xdg_toplevel.app_id,
+         * and without this the item has no identity for the card shell to use.
+         */
+        connect(toplevel, &QWaylandXdgToplevel::appIdChanged, this, [toplevel, xdgSurface]() {
+            if (!xdgSurface || !xdgSurface->surface())
+                return;
+            if (WebOSSurfaceItem *item = WebOSSurfaceItem::getSurfaceItemFromSurface(xdgSurface->surface()))
+                item->setAppId(toplevel->appId());
+        });
+    });
 
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
     const QVector<ShmFormat> supportedWaylandFormats = {
@@ -298,6 +335,7 @@ WebOSCoreCompositor::~WebOSCoreCompositor()
     QCoreApplication::instance()->removeEventFilter(m_eventPreprocessor);
     delete m_eventPreprocessor;
     delete m_wlShell;
+    delete m_xdgShell;
 }
 
 void WebOSCoreCompositor::insertToWindows(WebOSCompositorWindow *window)
