@@ -20,7 +20,6 @@ SUBDIRS = \
     src \
     qml \
     startup \
-    tests \
     utils
 
 cursor_theme {
