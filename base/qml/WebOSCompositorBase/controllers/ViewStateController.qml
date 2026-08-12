@@ -124,8 +124,11 @@ Item {
             if (compositorWindow.displayId > 0)
                 return;
             if (event === "splash") {
-                if (appId != null && (showSplash || showSpinner))
-                    views.spinner.start(appId);
+                if (appId != null && (showSplash || showSpinner)) {
+                    if (views.spinner) {
+                        views.spinner.start(appId);
+                    }
+                }
             } else if (event === "launch") {
                 // FIXME: Remove once "splash" event works.
                 if (views.spinner && !views.spinner.isOpen && appId != null) {
