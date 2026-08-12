@@ -4,7 +4,8 @@
     \"trustLevel\": \"oem\",
     \"allowedNames\": [
         \"com.webos.surfacemanager*\",
-        \"com.webos.platformstarfish\"
+        \"com.webos.platformstarfish\",
+        \"org.webosports.notifications\"
     ],
     \"permissions\": [
         {
@@ -22,6 +23,15 @@
                 \"com.lge.*\",
                 \"com.palm.*\",
                 \"com.webos.*\"
+            ]
+        },
+        {
+            \"service\": \"org.webosports.notifications\",
+            \"outbound\": [
+                \"com.lge.*\",
+                \"com.palm.*\",
+                \"com.webos.*\",
+                \"org.webosports.*\"
             ]
         }
     ]
