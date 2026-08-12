@@ -556,6 +556,8 @@ public:
     bool directUpdateOnPlane() const;
     void setDirectUpdateOnPlane(bool enable);
 
+    Q_INVOKABLE void changeSize(const QSize &newSize);
+
     static WebOSSurfaceItem *getSurfaceItemFromSurface(QWaylandSurface *surface) {
         return (!surface || surface->views().isEmpty()) ? nullptr : qobject_cast<WebOSSurfaceItem*>(surface->views().first()->renderObject());
     }

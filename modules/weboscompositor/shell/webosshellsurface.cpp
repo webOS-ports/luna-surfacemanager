@@ -322,6 +322,12 @@ void WebOSShellSurface::setPosition(const QPointF& pos)
         wl_webos_shell_surface_send_position_changed(m_shellSurface, pos.toPoint().x(), pos.toPoint().y());
 }
 
+void WebOSShellSurface::changeSize(const QSize &newSize)
+{
+    if (m_shellSurface)
+        wl_webos_shell_surface_send_client_size_changed(m_shellSurface, newSize.width(), newSize.height());
+}
+
 QVariantMap WebOSShellSurface::properties() const
 {
     return m_properties;

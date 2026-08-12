@@ -77,6 +77,8 @@ public:
 
     void setPosition(const QPointF& pos);
 
+    void changeSize(const QSize &newSize);
+
     QVariantMap properties() const;
     QVariant property(const QString &propertyName) const;
     void setProperty(const QString &name, const QVariant &value, bool notify = true);

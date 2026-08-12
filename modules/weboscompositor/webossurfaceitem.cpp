@@ -1229,6 +1229,11 @@ void WebOSSurfaceItem::updateScreenPosition()
     }
 }
 
+void WebOSSurfaceItem::changeSize(const QSize &newSize)
+{
+    if (m_shellSurface) m_shellSurface->changeSize(newSize);
+}
+
 void WebOSSurfaceItem::requestStateChange(Qt::WindowState state)
 {
     switch (state) {
