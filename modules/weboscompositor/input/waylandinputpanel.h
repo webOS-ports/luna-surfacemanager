@@ -97,6 +97,7 @@ private:
 private slots:
     void onInputPanelSurfaceMapped();
     void onInputPanelSurfaceUnmapped();
+    void onSurfaceDamaged(const QRegion &rect);
     void updateInputPanelState();
 
 private:

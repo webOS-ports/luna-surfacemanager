@@ -32,6 +32,8 @@ class WebOSSurface : public QWaylandQuickSurface
 
 public:
     WebOSSurface();
+    
+    QRegion windowMask();
 
 signals:
     void aboutToBeDestroyed();

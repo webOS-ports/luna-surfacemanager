@@ -55,3 +55,10 @@ WebOSSurface::WebOSSurface()
     : QWaylandQuickSurface(*new WebOSSurfacePrivate())
 {
 }
+
+QRegion WebOSSurface::windowMask()
+{
+    Q_D(WebOSSurface);
+    
+    return d->inputRegion;
+}

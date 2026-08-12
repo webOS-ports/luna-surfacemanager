@@ -20,6 +20,7 @@
 #include <QDebug>
 #include <QWaylandCompositor>
 
+#include "webossurface.h"
 #include "webossurfaceitem.h"
 #include "waylandinputpanel.h"
 
@@ -154,6 +155,10 @@ void WaylandInputPanel::getInputPanelSurface(struct wl_client *client, struct wl
     WaylandInputPanelSurface* surface = new WaylandInputPanelSurface(ipsi, client, id);
     connect(surface, &WaylandInputPanelSurface::mapped, that, &WaylandInputPanel::onInputPanelSurfaceMapped);
     connect(surface, &WaylandInputPanelSurface::unmapped, that, &WaylandInputPanel::onInputPanelSurfaceUnmapped);
+
+    if (surface->surfaceItem()->surface()) {
+        connect(surface->surfaceItem()->surface(), &QWaylandSurface::damaged, that, &WaylandInputPanel::onSurfaceDamaged);
+    }
 }
 
 void WaylandInputPanel::onInputPanelSurfaceMapped()
@@ -171,6 +176,25 @@ void WaylandInputPanel::onInputPanelSurfaceUnmapped()
     m_surfaces.removeAll(surface);
     if (surface == m_activeSurface)
         updateActiveInputPanelSurface();
+}
+
+void WaylandInputPanel::onSurfaceDamaged(const QRegion &rect)
+{
+    Q_UNUSED(rect);
+    
+    WebOSSurface *surface = qobject_cast<WebOSSurface *>(sender());
+    if (surface) {
+        QRegion newRegion = surface->windowMask();
+        QRect largestWindowMask;
+        for (auto &lInputAreaRect: newRegion) {
+            if (lInputAreaRect.width() > largestWindowMask.width()) largestWindowMask = lInputAreaRect;
+        }
+        
+        if (largestWindowMask.width()>0) {
+            // consider that the first defined mask region is the input area
+            setInputPanelRect(largestWindowMask);
+        }
+    }
 }
 
 void WaylandInputPanel::updateActiveInputPanelSurface(WaylandInputPanelSurface *surface)
