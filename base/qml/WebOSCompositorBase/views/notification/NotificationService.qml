@@ -42,6 +42,34 @@ Item {
         function parseModelData() {
             if (!modelData || Object.keys(modelData).length === 0)
                  return;
+
+            // notificationmgr posts a toastAction when a toast is withdrawn,
+            // mirroring alertAction. Without this the model only ever grows
+            // and closeToast has no visible effect.
+            var j = 0;
+            switch (modelData.toastAction) {
+            case "closeAll":
+                if (!modelData.toastInfo || modelData.toastInfo.sourceId === undefined) {
+                    clear();
+                    return;
+                }
+                for (j = count - 1; j >= 0; j--) {
+                    if (get(j).sourceId === modelData.toastInfo.sourceId)
+                        remove(j);
+                }
+                return;
+            case "close":
+                for (j = 0; j < count; j++) {
+                    if (get(j).timestamp === modelData.toastInfo.timestamp) {
+                        remove(j);
+                        break;
+                    }
+                }
+                return;
+            default:
+                break;
+            }
+
             for (var i = 0; i < count; i++) {
                 var d = get(i);
                 if (modelData.sourceId === d.sourceId && modelData.message === d.message && modelData.type === d.type) {
