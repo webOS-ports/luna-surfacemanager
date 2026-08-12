@@ -24,4 +24,9 @@ startup.files = $$replace_envs(surface-manager.sh.in, surface-manager.sh)
 envs.path = $$WEBOS_INSTALL_SYSCONFDIR/surface-manager.d/eglfs-integrations
 envs.files = eglfs-integrations/*
 
-INSTALLS += startup envs
+# LuneOS runs the plain "eglfs" platform, so the eglfs-integrations files above are
+# never sourced. Keep shipping product.env, which surface-manager.sh always reads.
+product.path = $$WEBOS_INSTALL_SYSCONFDIR/surface-manager.d
+product.files = $$replace_envs(product.env.in, product.env)
+
+INSTALLS += startup envs product
