@@ -19,8 +19,15 @@
 #include "weboscompositortracer.h"
 #include "weboscompositorwindow.h"
 
-#include <GLES2/gl2.h>
-#include <GLES2/gl2ext.h>
+#  if QT_CONFIG(opengles32)
+#   include <GLES3/gl32.h>
+#  elif QT_CONFIG(opengles31)
+#   include <GLES3/gl31.h>
+#  elif QT_CONFIG(opengles3)
+#   include <GLES3/gl3.h>
+#  else
+#   include <GLES2/gl2.h>
+#  endif
 
 #include <QImage>
 #include <QGuiApplication>
