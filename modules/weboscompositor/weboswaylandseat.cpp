@@ -19,6 +19,9 @@
 
 #include <QtCore/QString>
 #include <QtWaylandCompositor/private/qwaylandseat_p.h>
+// Qt 6.12 no longer pulls QWaylandKeymap in through qwaylandseat_p.h, and
+// keymap() below needs the complete type.
+#include <QtWaylandCompositor/qwaylandkeymap.h>
 
 WebOSWaylandSeat::WebOSWaylandSeat(QWaylandCompositor *compositor, CapabilityFlags capabilityFlags)
     : QWaylandSeat(compositor, capabilityFlags)

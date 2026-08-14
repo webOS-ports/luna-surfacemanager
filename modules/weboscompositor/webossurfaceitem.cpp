@@ -46,6 +46,9 @@
 #include <QtQuick/private/qquickwindow_p.h>
 #include <QtQuick/private/qsgrenderer_p.h>
 
+// QFile used to arrive transitively through the Qt headers below; Qt 6.12
+// tightened those, so include it directly.
+#include <QFile>
 #include <QtWaylandCompositor/qwaylandseat.h>
 #include <QtWaylandCompositor/private/qwaylandkeyboard_p.h>
 #include <QtWaylandCompositor/private/qwaylandpointer_p.h>
