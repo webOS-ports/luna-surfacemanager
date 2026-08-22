@@ -32,6 +32,7 @@
 #include <WebOSCoreCompositor/weboskeyfilter.h>
 #include <QtWaylandCompositor/QWaylandWlShellSurface>
 #include <QtWaylandCompositor/QWaylandXdgShell>
+#include <QtWaylandCompositor/QWaylandViewporter>
 
 #include "unixsignalhandler.h"
 #include "webossurfaceitem.h"
@@ -352,6 +353,7 @@ private:
     WebOSInputManager *m_inputManager;
     QWaylandWlShell *m_wlShell = nullptr;
     QWaylandXdgShell *m_xdgShell = nullptr;
+    QWaylandViewporter *m_viewporter = nullptr;
 #ifdef MULTIINPUT_SUPPORT
     WebOSInputDevice *m_inputDevicePreallocated;
     int m_lastMouseEventFrom;

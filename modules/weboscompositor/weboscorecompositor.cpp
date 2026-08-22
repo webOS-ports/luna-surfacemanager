@@ -240,6 +240,7 @@ WebOSCoreCompositor::WebOSCoreCompositor(ExtensionFlags extensions, const char *
     , m_surfaceModel(nullptr)
     , m_wlShell(new QWaylandWlShell(this))
     , m_xdgShell(new QWaylandXdgShell(this))
+    , m_viewporter(new QWaylandViewporter(this))
 #ifdef MULTIINPUT_SUPPORT
     , m_lastMouseEventFrom(0)
     , m_inputDevicePreallocated(0)
@@ -336,6 +337,7 @@ WebOSCoreCompositor::~WebOSCoreCompositor()
     delete m_eventPreprocessor;
     delete m_wlShell;
     delete m_xdgShell;
+    delete m_viewporter;
 }
 
 void WebOSCoreCompositor::insertToWindows(WebOSCompositorWindow *window)
