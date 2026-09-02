@@ -36,6 +36,7 @@
 #include <QQmlEngine>
 #include <QOpenGLTexture>
 #include <QDebug>
+#include <QWaylandXdgShell>
 
 #include <qweboskeyextension.h>
 
@@ -1107,6 +1108,18 @@ void WebOSSurfaceItem::close()
     if (m_shellSurface) {
         sendCloseToGroupItems();
         m_shellSurface->close();
+    } else if (QWaylandXdgToplevel *toplevel =
+                   qobject_cast<QWaylandXdgToplevel *>(property("_luneosXdgToplevel").value<QObject *>())) {
+        /* An xdg_shell client has a proper way to be asked to go away, and it
+         * is the only one that lets the client tear the window down itself.
+         * Waydroid's hwcomposer, for one, uses xdg_toplevel.close to drop the
+         * Android task and clear waydroid.active_apps; killing its wl_client
+         * instead takes down the connection SurfaceFlinger composites through,
+         * which Android simply rebuilds - so a swiped-away card came straight
+         * back. Only fall through to closing the client when there is neither
+         * a webOS shell surface nor an xdg_toplevel.
+         */
+        toplevel->sendClose();
     } else {
         qWarning() << "No webos shell surface exist, will close entire client !";
         if (surface() && surface()->client()) {

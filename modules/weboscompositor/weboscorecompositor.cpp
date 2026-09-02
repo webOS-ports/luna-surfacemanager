@@ -283,6 +283,15 @@ WebOSCoreCompositor::WebOSCoreCompositor(ExtensionFlags extensions, const char *
         qInfo() << "xdg_toplevel created" << toplevel << "configuring fullscreen" << size;
         toplevel->sendFullscreen(size);
 
+        /* Remember the toplevel on the item so WebOSSurfaceItem::close() can
+         * send xdg_toplevel.close instead of killing the whole client. Stored
+         * as a dynamic property to keep this out of the item's public header.
+         */
+        if (xdgSurface && xdgSurface->surface()) {
+            if (WebOSSurfaceItem *item = WebOSSurfaceItem::getSurfaceItemFromSurface(xdgSurface->surface()))
+                item->setProperty("_luneosXdgToplevel", QVariant::fromValue<QObject *>(toplevel));
+        }
+
         /* Carry appId across to the surface item. wl_webos_shell clients set it
          * through WebOSShellSurface; xdg_shell clients set xdg_toplevel.app_id,
          * and without this the item has no identity for the card shell to use.
