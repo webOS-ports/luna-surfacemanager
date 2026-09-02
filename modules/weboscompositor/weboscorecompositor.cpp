@@ -795,11 +795,41 @@ void WebOSCoreCompositor::surfaceCreated(QWaylandSurface *surface) {
     QPointer<QWaylandSurface> pSurface(surface);
     QPointer<WebOSSurfaceItem> pItem(item);
 
-    connect(pSurface, &QWaylandSurface::hasContentChanged, this, [this, pSurface, pItem] {
-        if (pSurface && pSurface->hasContent())
-            this->onSurfaceMapped(pSurface, pItem);
-        else if (pItem && pItem->surface() && !pItem->isBufferLocked()) // Avoid onSurfaceUnmapped when the surface is about to be destroyed
+    /* A wl_surface that takes the wl_subsurface role is not a window of its own,
+     * it is a piece of its parent's content. QWaylandQuickItem already renders
+     * subsurfaces, as child items of the parent surface's item, so all the
+     * compositor has to do is stay out of the way: an item built here for a
+     * subsurface has no shell role and therefore no appId, and
+     * WebOSSurfaceItem's default type is _WEBOS_WINDOW_TYPE_CARD, so mapping it
+     * hands the card shell an anonymous extra card for what is really one
+     * window. Waydroid hits this whenever its hwcomposer composes through
+     * subsurfaces, which is every window once multi-window mode is on.
+     *
+     * The role arrives after the surface is created, so track it rather than
+     * testing it once: parentChanged fires with a non-null parent when the
+     * surface becomes a subsurface, and with null again if it stops being one.
+     */
+    connect(pSurface, &QWaylandSurface::parentChanged, this,
+            [this, pSurface, pItem](QWaylandSurface *newParent, QWaylandSurface *) {
+        if (!pItem)
+            return;
+        const bool isSubsurface = newParent != nullptr;
+        pItem->setProperty("_luneosIsSubsurface", isSubsurface);
+        qInfo() << pSurface << pItem << (isSubsurface ? "became a subsurface" : "is no longer a subsurface");
+        // It should not have been mapped yet - clients set the role before the
+        // first commit - but do not leave a card behind if one ever is.
+        if (isSubsurface && m_surfaces.contains(pItem))
             this->onSurfaceUnmapped(pSurface, pItem);
+    });
+
+    connect(pSurface, &QWaylandSurface::hasContentChanged, this, [this, pSurface, pItem] {
+        if (pSurface && pSurface->hasContent()) {
+            if (pItem && pItem->property("_luneosIsSubsurface").toBool())
+                return;
+            this->onSurfaceMapped(pSurface, pItem);
+        } else if (pItem && pItem->surface() && !pItem->isBufferLocked()) { // Avoid onSurfaceUnmapped when the surface is about to be destroyed
+            this->onSurfaceUnmapped(pSurface, pItem);
+        }
     });
 
     connect(pSurface, &QWaylandSurface::destroyed, this, [this, pSurface, pItem] {
