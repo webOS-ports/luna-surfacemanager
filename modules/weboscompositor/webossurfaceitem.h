@@ -558,6 +558,12 @@ public:
 
     Q_INVOKABLE void changeSize(const QSize &newSize);
 
+    /* The size this client was last configured at. For an xdg_shell client
+     * this is what it was actually told, so it doubles as the surface-local
+     * coordinate space its subsurfaces are positioned in. */
+    QSize configuredSize() const { return m_configuredSize; }
+    void setConfiguredSize(const QSize &size);
+
     static WebOSSurfaceItem *getSurfaceItemFromSurface(QWaylandSurface *surface) {
         return (!surface || surface->views().isEmpty()) ? nullptr : qobject_cast<WebOSSurfaceItem*>(surface->views().first()->renderObject());
     }
@@ -706,6 +712,7 @@ private:
     WebOSShellSurface* m_shellSurface;
     ItemState m_itemState;
     QString m_itemStateReason;
+    QSize m_configuredSize;
 
     bool m_notifyPositionToClient;
     QPointF m_position;

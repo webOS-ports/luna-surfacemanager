@@ -1250,7 +1250,33 @@ void WebOSSurfaceItem::updateScreenPosition()
 
 void WebOSSurfaceItem::changeSize(const QSize &newSize)
 {
-    if (m_shellSurface) m_shellSurface->changeSize(newSize);
+    if (m_shellSurface) {
+        m_shellSurface->changeSize(newSize);
+        return;
+    }
+
+    /* No wl_webos_shell surface: this is an xdg_shell client, which has to be
+     * told through xdg_toplevel.configure instead. */
+    if (!newSize.isValid() || newSize.isEmpty())
+        return;
+
+    QWaylandXdgToplevel *toplevel = qobject_cast<QWaylandXdgToplevel *>(
+            property("_luneosXdgToplevel").value<QObject *>());
+    if (!toplevel)
+        return;
+
+    /* A configure makes the client relayout - for Waydroid that is every
+     * activity in the task - so only send one when the size actually moved. */
+    if (m_configuredSize == newSize)
+        return;
+
+    setConfiguredSize(newSize);
+    toplevel->sendFullscreen(newSize);
+}
+
+void WebOSSurfaceItem::setConfiguredSize(const QSize &size)
+{
+    m_configuredSize = size;
 }
 
 void WebOSSurfaceItem::requestStateChange(Qt::WindowState state)
