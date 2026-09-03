@@ -15,6 +15,7 @@ KeyController 1.0 controllers/KeyController.qml
 VideoController 1.0 controllers/VideoController.qml
 DebugPatternController 1.0 controllers/DebugPatternController.qml
 ViewStateController 1.0 controllers/ViewStateController.qml
+DockWindowModel 1.0 models/DockWindowModel.qml
 FullscreenWindowModel 1.0 models/FullscreenWindowModel.qml
 KeyboardWindowModel 1.0 models/KeyboardWindowModel.qml
 OverlayWindowModel 1.0 models/OverlayWindowModel.qml
