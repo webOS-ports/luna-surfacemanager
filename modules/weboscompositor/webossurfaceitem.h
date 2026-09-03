@@ -564,6 +564,11 @@ public:
     QSize configuredSize() const { return m_configuredSize; }
     void setConfiguredSize(const QSize &size);
 
+    /* The client's own coordinate space, which its subsurfaces are positioned
+     * and sized in. Mapped onto this item's geometry so that content composed
+     * through subsurfaces follows the item the way the item's own buffer does. */
+    QSizeF clientCoordinateSpace() const;
+
     static WebOSSurfaceItem *getSurfaceItemFromSurface(QWaylandSurface *surface) {
         return (!surface || surface->views().isEmpty()) ? nullptr : qobject_cast<WebOSSurfaceItem*>(surface->views().first()->renderObject());
     }
@@ -677,6 +682,8 @@ protected:
 
     virtual bool contains(const QPointF & point) const override;
 
+    void geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry) override;
+
     QList<QTouchEvent::TouchPoint> mapToTarget(const QList<QTouchEvent::TouchPoint>& points) const;
 
     void takeWlKeyboardFocus() const;
@@ -698,6 +705,8 @@ private slots:
     void handleWindowChanged();
     void requestStateChange(Qt::WindowState s);
     void onSurfaceDamaged(const QRegion &region);
+    void updateSubsurfaceGeometry();
+    void trackSubsurface(QWaylandSurface *childSurface);
 
 private:
     // variables

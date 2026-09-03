@@ -1279,6 +1279,89 @@ void WebOSSurfaceItem::setConfiguredSize(const QSize &size)
     m_configuredSize = size;
 }
 
+QSizeF WebOSSurfaceItem::clientCoordinateSpace() const
+{
+    /* What the client was told to render, which is the space it positions its
+     * subsurfaces in. Fall back to what it actually produced for a client that
+     * was never configured through changeSize(). */
+    if (m_configuredSize.isValid() && !m_configuredSize.isEmpty())
+        return QSizeF(m_configuredSize);
+    if (surface() && !surface()->destinationSize().isEmpty())
+        return QSizeF(surface()->destinationSize());
+    return QSizeF();
+}
+
+void WebOSSurfaceItem::updateSubsurfaceGeometry()
+{
+    if (!surface())
+        return;
+
+    const QSizeF space = clientCoordinateSpace();
+    if (space.isEmpty() || width() <= 0 || height() <= 0)
+        return;
+
+    const qreal sx = width() / space.width();
+    const qreal sy = height() / space.height();
+
+    /* The surfaces that took the wl_subsurface role against this one. There is
+     * no public accessor for that - QWaylandSurface only reports it through
+     * parentChanged - so read the list QWaylandCompositor appends to, which is
+     * what QWaylandQuickItem itself iterates when it adopts subsurfaces. */
+    const auto subsurfaces = QWaylandSurfacePrivate::get(surface())->subsurfaceChildren;
+    if (subsurfaces.isEmpty())
+        return;
+
+    const QList<QQuickItem *> children = childItems();
+    for (QQuickItem *child : children) {
+        QWaylandQuickItem *sub = qobject_cast<QWaylandQuickItem *>(child);
+        if (!sub || !sub->surface())
+            continue;
+
+        bool isSubsurface = false;
+        for (const QPointer<QWaylandSurface> &s : subsurfaces) {
+            if (s.data() == sub->surface()) {
+                isSubsurface = true;
+                break;
+            }
+        }
+        if (!isSubsurface)
+            continue;
+
+        const QSizeF natural = sub->surface()->destinationSize();
+        if (natural.isEmpty())
+            continue;
+
+        const QPoint pos = QWaylandSurfacePrivate::get(sub->surface())->subsurfacePosition();
+        sub->setPosition(QPointF(pos.x() * sx, pos.y() * sy));
+        /* An explicit size sticks: Qt only ever sets the implicit one. */
+        sub->setSize(QSizeF(natural.width() * sx, natural.height() * sy));
+    }
+}
+
+void WebOSSurfaceItem::trackSubsurface(QWaylandSurface *childSurface)
+{
+    if (!childSurface)
+        return;
+
+    /* Connected after QWaylandQuickItem::handleSubsurfaceAdded has connected
+     * its own handler, so this runs second and the scaled position is the one
+     * that stays. */
+    connect(childSurface, &QWaylandSurface::subsurfacePositionChanged,
+            this, &WebOSSurfaceItem::updateSubsurfaceGeometry, Qt::UniqueConnection);
+    connect(childSurface, &QWaylandSurface::destinationSizeChanged,
+            this, &WebOSSurfaceItem::updateSubsurfaceGeometry, Qt::UniqueConnection);
+
+    updateSubsurfaceGeometry();
+}
+
+void WebOSSurfaceItem::geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry)
+{
+    QWaylandQuickItem::geometryChange(newGeometry, oldGeometry);
+
+    if (newGeometry.size() != oldGeometry.size())
+        updateSubsurfaceGeometry();
+}
+
 void WebOSSurfaceItem::requestStateChange(Qt::WindowState state)
 {
     switch (state) {
@@ -1807,6 +1890,14 @@ void WebOSSurfaceItem::surfaceChangedEvent(QWaylandSurface *newSurface, QWayland
         qDebug() << "Change m_surfaceGrabbed" << m_surfaceGrabbed << "to newSurface" << newSurface;
         QWaylandSurfacePrivate::get(m_surfaceGrabbed)->deref();
         m_surfaceGrabbed = newSurface;
+    }
+
+    if (newSurface) {
+        connect(newSurface, &QWaylandSurface::childAdded,
+                this, &WebOSSurfaceItem::trackSubsurface, Qt::UniqueConnection);
+        const auto existing = QWaylandSurfacePrivate::get(newSurface)->subsurfaceChildren;
+        for (const QPointer<QWaylandSurface> &child : existing)
+            trackSubsurface(child.data());
     }
 
     pid_t pid;
