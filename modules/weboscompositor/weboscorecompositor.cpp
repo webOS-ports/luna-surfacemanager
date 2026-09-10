@@ -315,6 +315,45 @@ WebOSCoreCompositor::WebOSCoreCompositor(ExtensionFlags extensions, const char *
         });
     });
 
+    /* xdg_popup is the role a client gives a menu, a tooltip or a combo box
+     * drop-down: content anchored to a parent window rather than a window of
+     * its own. Now that xdg_wm_base is advertised, clients do create them, and
+     * left alone each one arrives here as an anonymous _WEBOS_WINDOW_TYPE_CARD
+     * - the failure the subsurface handling below fixes for wl_subsurface.
+     * Answer the configure the protocol requires, and hang the item off its
+     * parent's item at the position the client's positioner asked for so it
+     * draws over the parent instead of joining the card stack.
+     */
+    connect(m_xdgShell, &QWaylandXdgShell::popupCreated, this,
+            [](QWaylandXdgPopup *popup, QWaylandXdgSurface *xdgSurface) {
+        QSize size = popup->positionerSize();
+        if (size.isEmpty())
+            size = QSize(1, 1);
+        const QRect geometry(popup->unconstrainedPosition(), size);
+        qInfo() << "xdg_popup created" << popup << "configuring" << geometry;
+        popup->sendConfigure(geometry);
+
+        if (!xdgSurface || !xdgSurface->surface())
+            return;
+        WebOSSurfaceItem *item = WebOSSurfaceItem::getSurfaceItemFromSurface(xdgSurface->surface());
+        if (!item)
+            return;
+
+        /* Keep it out of the card models. The property is not pushed back to
+         * the client - an xdg_shell client has no wl_webos_shell surface to
+         * push it through.
+         */
+        item->setType(QLatin1String("_WEBOS_WINDOW_TYPE_POPUP"), false);
+
+        QWaylandXdgSurface *parentXdgSurface = popup->parentXdgSurface();
+        if (!parentXdgSurface || !parentXdgSurface->surface())
+            return;
+        if (WebOSSurfaceItem *parentItem = WebOSSurfaceItem::getSurfaceItemFromSurface(parentXdgSurface->surface())) {
+            item->setParentItem(parentItem);
+            item->setPosition(geometry.topLeft());
+        }
+    });
+
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
     const QVector<ShmFormat> supportedWaylandFormats = {
         ShmFormat_ARGB8888,
@@ -839,6 +878,10 @@ void WebOSCoreCompositor::surfaceCreated(QWaylandSurface *surface) {
     connect(pSurface, &QWaylandSurface::hasContentChanged, this, [this, pSurface, pItem] {
         if (pSurface && pSurface->hasContent()) {
             if (QWaylandSurfacePrivate::get(pSurface)->isSubsurface())
+                return;
+            // Same for an xdg_popup: it is drawn as a child of its parent's
+            // item, so mapping it would add a card for a menu.
+            if (pSurface->role() == QWaylandXdgPopup::role())
                 return;
             this->onSurfaceMapped(pSurface, pItem);
         } else if (pItem && pItem->surface() && !pItem->isBufferLocked()) { // Avoid onSurfaceUnmapped when the surface is about to be destroyed
