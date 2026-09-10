@@ -816,16 +816,19 @@ void WebOSCoreCompositor::surfaceCreated(QWaylandSurface *surface) {
      * window. Waydroid hits this whenever its hwcomposer composes through
      * subsurfaces, which is every window once multi-window mode is on.
      *
-     * The role arrives after the surface is created, so track it rather than
-     * testing it once: parentChanged fires with a non-null parent when the
-     * surface becomes a subsurface, and with null again if it stops being one.
+     * The role arrives after the surface is created, so ask for it when the
+     * surface is about to be mapped rather than caching an answer: Qt emits
+     * parentChanged from initSubsurface only, always with a non-null parent,
+     * and nothing at all when the wl_subsurface is destroyed - a remembered
+     * flag would keep a surface that dropped the role out of the models for
+     * good. parentChanged is still worth watching to take down a card that
+     * somehow got mapped before the role arrived.
      */
     connect(pSurface, &QWaylandSurface::parentChanged, this,
             [this, pSurface, pItem](QWaylandSurface *newParent, QWaylandSurface *) {
         if (!pItem)
             return;
         const bool isSubsurface = newParent != nullptr;
-        pItem->setProperty("_luneosIsSubsurface", isSubsurface);
         qInfo() << pSurface << pItem << (isSubsurface ? "became a subsurface" : "is no longer a subsurface");
         // It should not have been mapped yet - clients set the role before the
         // first commit - but do not leave a card behind if one ever is.
@@ -835,7 +838,7 @@ void WebOSCoreCompositor::surfaceCreated(QWaylandSurface *surface) {
 
     connect(pSurface, &QWaylandSurface::hasContentChanged, this, [this, pSurface, pItem] {
         if (pSurface && pSurface->hasContent()) {
-            if (pItem && pItem->property("_luneosIsSubsurface").toBool())
+            if (QWaylandSurfacePrivate::get(pSurface)->isSubsurface())
                 return;
             this->onSurfaceMapped(pSurface, pItem);
         } else if (pItem && pItem->surface() && !pItem->isBufferLocked()) { // Avoid onSurfaceUnmapped when the surface is about to be destroyed
