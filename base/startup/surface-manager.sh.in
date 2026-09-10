@@ -49,9 +49,10 @@ export WEBOS_COMPOSITOR_EXTENSIONS=${WEBOS_COMPOSITOR_EXTENSIONS:-}
 export WEBOS_COMPOSITOR_DISPLAYS=${WEBOS_COMPOSITOR_DISPLAYS:-1}
 export WEBOS_COMPOSITOR_PRIMARY_SCREEN=${WEBOS_COMPOSITOR_PRIMARY_SCREEN:-}
 export WEBOS_COMPOSITOR_DISPLAY_CONFIG=${WEBOS_COMPOSITOR_DISPLAY_CONFIG:-}
-# Compositor platform (LuneOS builds without backend_drm, so the build-time
-# default below is empty -- keep eglfs as the fallback)
-export WEBOS_COMPOSITOR_PLATFORM=${WEBOS_COMPOSITOR_PLATFORM:-eglfs}
+# Compositor platform. Left alone on purpose: the backend block further down
+# fills it in from the build-time defaults, and defaulting it here would make
+# that block - and with it QT_QPA_EGLFS_INTEGRATION and WEBOS_DRM_FORMAT -
+# unreachable.
 # Extra options passed through to the surface-manager binary
 export WEBOS_COMPOSITOR_EXTRA_OPTIONS=${WEBOS_COMPOSITOR_EXTRA_OPTIONS:-}
 # Decide to scan Virtual output
@@ -77,6 +78,11 @@ if [ "x${WEBOS_COMPOSITOR_PLATFORM}" = "x" ]; then
     export WEBOS_COMPOSITOR_PLATFORM="@WEBOS_COMPOSITOR_PLATFORM_DEFAULT@"
     export QT_QPA_EGLFS_INTEGRATION="@WEBOS_EGLFS_INTEGRATION_DEFAULT@"
     export WEBOS_DRM_FORMAT="@WEBOS_DRM_FORMAT_DEFAULT@"
+fi
+# LuneOS builds without backend_drm, so the build-time default above can itself
+# be empty - plain eglfs is what we run then.
+if [ "x${WEBOS_COMPOSITOR_PLATFORM}" = "x" ]; then
+    export WEBOS_COMPOSITOR_PLATFORM=eglfs
 fi
 # Import eglfs integration specific settings if available
 eglfs_integration="@WEBOS_INSTALL_SYSCONFDIR@/surface-manager.d/eglfs-integrations/${QT_QPA_EGLFS_INTEGRATION}.env"
