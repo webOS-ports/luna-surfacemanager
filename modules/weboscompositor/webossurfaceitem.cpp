@@ -1319,8 +1319,6 @@ void WebOSSurfaceItem::updateSubsurfaceGeometry()
      * parentChanged - so read the list QWaylandCompositor appends to, which is
      * what QWaylandQuickItem itself iterates when it adopts subsurfaces. */
     const auto subsurfaces = QWaylandSurfacePrivate::get(surface())->subsurfaceChildren;
-    if (subsurfaces.isEmpty())
-        return;
 
     const QList<QQuickItem *> children = childItems();
     for (QQuickItem *child : children) {
@@ -1335,14 +1333,25 @@ void WebOSSurfaceItem::updateSubsurfaceGeometry()
                 break;
             }
         }
-        if (!isSubsurface)
-            continue;
+
+        /* An xdg_popup is positioned in the same client coordinate space, by
+         * its positioner rather than by wl_subsurface.set_position, so it is
+         * scaled here the same way. WebOSCoreCompositor leaves the position it
+         * was given on the item. */
+        QPoint pos;
+        if (isSubsurface) {
+            pos = QWaylandSurfacePrivate::get(sub->surface())->subsurfacePosition();
+        } else {
+            const QVariant popupPosition = sub->property("_luneosPopupPosition");
+            if (!popupPosition.isValid())
+                continue;
+            pos = popupPosition.toPoint();
+        }
 
         const QSizeF natural = sub->surface()->destinationSize();
         if (natural.isEmpty())
             continue;
 
-        const QPoint pos = QWaylandSurfacePrivate::get(sub->surface())->subsurfacePosition();
         sub->setPosition(QPointF(pos.x() * sx, pos.y() * sy));
         /* An explicit size sticks: Qt only ever sets the implicit one. */
         sub->setSize(QSizeF(natural.width() * sx, natural.height() * sy));
