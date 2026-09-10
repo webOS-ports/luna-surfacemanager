@@ -97,8 +97,16 @@ fi
 # reach the failure rather than sit in this loop forever with nothing logged.
 # The card number is not always 0, and the framebuffer node is /dev/fb0 on a
 # plain Linux target and /dev/graphics/fb0 on an Android/Halium one.
+# The root the nodes are looked for under. Empty in production; the test harness
+# points it at a tree it controls, so the tests exercise the list below rather
+# than a list of their own.
+WEBOS_DISPLAY_DEVICE_ROOT="${WEBOS_DISPLAY_DEVICE_ROOT:-}"
+WEBOS_DISPLAY_DEVICE_TIMEOUT="${WEBOS_DISPLAY_DEVICE_TIMEOUT:-30}"
+
 display_device_present() {
-    for node in /dev/dri/card* /dev/fb0 /dev/graphics/fb0; do
+    for node in "${WEBOS_DISPLAY_DEVICE_ROOT}"/dev/dri/card* \
+                "${WEBOS_DISPLAY_DEVICE_ROOT}"/dev/fb0 \
+                "${WEBOS_DISPLAY_DEVICE_ROOT}"/dev/graphics/fb0; do
         [ -e "${node}" ] && return 0
     done
     return 1
@@ -106,7 +114,7 @@ display_device_present() {
 
 waited=0
 while ! display_device_present; do
-    if [ ${waited} -ge 30 ]; then
+    if [ ${waited} -ge ${WEBOS_DISPLAY_DEVICE_TIMEOUT} ]; then
         pmlog warning "No display device after ${waited}s, starting anyway"
         break
     fi
