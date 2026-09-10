@@ -288,8 +288,19 @@ WebOSCoreCompositor::WebOSCoreCompositor(ExtensionFlags extensions, const char *
          * as a dynamic property to keep this out of the item's public header.
          */
         if (xdgSurface && xdgSurface->surface()) {
-            if (WebOSSurfaceItem *item = WebOSSurfaceItem::getSurfaceItemFromSurface(xdgSurface->surface()))
+            if (WebOSSurfaceItem *item = WebOSSurfaceItem::getSurfaceItemFromSurface(xdgSurface->surface())) {
                 item->setProperty("_luneosXdgToplevel", QVariant::fromValue<QObject *>(toplevel));
+                /* The property holds a plain pointer and the item outlives the
+                 * toplevel in two ordinary cases: a client that unmaps by
+                 * destroying its xdg_toplevel and keeps the wl_surface, and an
+                 * item that stays behind as a recents proxy after the window is
+                 * gone. Drop the pointer when the toplevel does, or close() and
+                 * changeSize() would qobject_cast freed memory.
+                 */
+                connect(toplevel, &QObject::destroyed, item, [item]() {
+                    item->setProperty("_luneosXdgToplevel", QVariant());
+                });
+            }
         }
 
         /* Carry appId across to the surface item. wl_webos_shell clients set it
@@ -302,6 +313,53 @@ WebOSCoreCompositor::WebOSCoreCompositor(ExtensionFlags extensions, const char *
             if (WebOSSurfaceItem *item = WebOSSurfaceItem::getSurfaceItemFromSurface(xdgSurface->surface()))
                 item->setAppId(toplevel->appId());
         });
+    });
+
+    /* xdg_popup is the role a client gives a menu, a tooltip or a combo box
+     * drop-down: content anchored to a parent window rather than a window of
+     * its own. Now that xdg_wm_base is advertised, clients do create them, and
+     * left alone each one arrives here as an anonymous _WEBOS_WINDOW_TYPE_CARD
+     * - the failure the subsurface handling below fixes for wl_subsurface.
+     * Qt has already answered the configure by the time this runs, so all that
+     * is left is to hang the item off its parent's item at the position the
+     * client's positioner asked for, so it draws over the parent instead of
+     * joining the card stack.
+     */
+    connect(m_xdgShell, &QWaylandXdgShell::popupCreated, this,
+            [](QWaylandXdgPopup *popup, QWaylandXdgSurface *xdgSurface) {
+        if (!xdgSurface || !xdgSurface->surface())
+            return;
+        WebOSSurfaceItem *item = WebOSSurfaceItem::getSurfaceItemFromSurface(xdgSurface->surface());
+        if (!item)
+            return;
+
+        qInfo() << "xdg_popup created" << popup << "at" << popup->unconstrainedPosition();
+
+        /* Keep it out of the card models. The property is not pushed back to
+         * the client - an xdg_shell client has no wl_webos_shell surface to
+         * push it through.
+         */
+        item->setType(QLatin1String("_WEBOS_WINDOW_TYPE_POPUP"), false);
+
+        QWaylandXdgSurface *parentXdgSurface = popup->parentXdgSurface();
+        if (!parentXdgSurface || !parentXdgSurface->surface())
+            return;
+        WebOSSurfaceItem *parentItem = WebOSSurfaceItem::getSurfaceItemFromSurface(parentXdgSurface->surface());
+        if (!parentItem)
+            return;
+
+        /* The position is in the client's own coordinate space, which is not
+         * the parent item's if the item was configured at a different size, so
+         * leave it to updateSubsurfaceGeometry() to scale - the same path that
+         * places subsurfaces, and the one that runs again when the parent item
+         * is resized. Queued: the popup has no buffer yet at this point. */
+        item->setProperty("_luneosPopupPosition", popup->unconstrainedPosition());
+        item->setParentItem(parentItem);
+        /* And again once the popup has a buffer to be sized from - it has
+         * none yet, so the pass below would find nothing to scale. */
+        connect(xdgSurface->surface(), SIGNAL(destinationSizeChanged()),
+                parentItem, SLOT(updateSubsurfaceGeometry()), Qt::UniqueConnection);
+        QMetaObject::invokeMethod(parentItem, "updateSubsurfaceGeometry", Qt::QueuedConnection);
     });
 
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
@@ -805,16 +863,19 @@ void WebOSCoreCompositor::surfaceCreated(QWaylandSurface *surface) {
      * window. Waydroid hits this whenever its hwcomposer composes through
      * subsurfaces, which is every window once multi-window mode is on.
      *
-     * The role arrives after the surface is created, so track it rather than
-     * testing it once: parentChanged fires with a non-null parent when the
-     * surface becomes a subsurface, and with null again if it stops being one.
+     * The role arrives after the surface is created, so ask for it when the
+     * surface is about to be mapped rather than caching an answer: Qt emits
+     * parentChanged from initSubsurface only, always with a non-null parent,
+     * and nothing at all when the wl_subsurface is destroyed - a remembered
+     * flag would keep a surface that dropped the role out of the models for
+     * good. parentChanged is still worth watching to take down a card that
+     * somehow got mapped before the role arrived.
      */
     connect(pSurface, &QWaylandSurface::parentChanged, this,
             [this, pSurface, pItem](QWaylandSurface *newParent, QWaylandSurface *) {
         if (!pItem)
             return;
         const bool isSubsurface = newParent != nullptr;
-        pItem->setProperty("_luneosIsSubsurface", isSubsurface);
         qInfo() << pSurface << pItem << (isSubsurface ? "became a subsurface" : "is no longer a subsurface");
         // It should not have been mapped yet - clients set the role before the
         // first commit - but do not leave a card behind if one ever is.
@@ -824,10 +885,18 @@ void WebOSCoreCompositor::surfaceCreated(QWaylandSurface *surface) {
 
     connect(pSurface, &QWaylandSurface::hasContentChanged, this, [this, pSurface, pItem] {
         if (pSurface && pSurface->hasContent()) {
-            if (pItem && pItem->property("_luneosIsSubsurface").toBool())
+            if (QWaylandSurfacePrivate::get(pSurface)->isSubsurface())
+                return;
+            // Same for an xdg_popup: it is drawn as a child of its parent's
+            // item, so mapping it would add a card for a menu.
+            if (pSurface->role() == QWaylandXdgPopup::role())
                 return;
             this->onSurfaceMapped(pSurface, pItem);
         } else if (pItem && pItem->surface() && !pItem->isBufferLocked()) { // Avoid onSurfaceUnmapped when the surface is about to be destroyed
+            // Nothing mapped these, so do not tell QML they went away either.
+            if (QWaylandSurfacePrivate::get(pSurface)->isSubsurface()
+                    || pSurface->role() == QWaylandXdgPopup::role())
+                return;
             this->onSurfaceUnmapped(pSurface, pItem);
         }
     });

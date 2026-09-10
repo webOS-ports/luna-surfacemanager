@@ -49,9 +49,10 @@ export WEBOS_COMPOSITOR_EXTENSIONS=${WEBOS_COMPOSITOR_EXTENSIONS:-}
 export WEBOS_COMPOSITOR_DISPLAYS=${WEBOS_COMPOSITOR_DISPLAYS:-1}
 export WEBOS_COMPOSITOR_PRIMARY_SCREEN=${WEBOS_COMPOSITOR_PRIMARY_SCREEN:-}
 export WEBOS_COMPOSITOR_DISPLAY_CONFIG=${WEBOS_COMPOSITOR_DISPLAY_CONFIG:-}
-# Compositor platform (LuneOS builds without backend_drm, so the build-time
-# default below is empty -- keep eglfs as the fallback)
-export WEBOS_COMPOSITOR_PLATFORM=${WEBOS_COMPOSITOR_PLATFORM:-eglfs}
+# Compositor platform. Left alone on purpose: the backend block further down
+# fills it in from the build-time defaults, and defaulting it here would make
+# that block - and with it QT_QPA_EGLFS_INTEGRATION and WEBOS_DRM_FORMAT -
+# unreachable.
 # Extra options passed through to the surface-manager binary
 export WEBOS_COMPOSITOR_EXTRA_OPTIONS=${WEBOS_COMPOSITOR_EXTRA_OPTIONS:-}
 # Decide to scan Virtual output
@@ -64,7 +65,7 @@ export WEBOS_COMPOSITOR_GEOMETRY=$(luna-send -n 1 -a com.webos.surfacemanager lu
 product_environment="@WEBOS_INSTALL_SYSCONFDIR@/surface-manager.d/product.env"
 if [ -f ${product_environment} ]; then
     pmlog info "Processing ${product_environment} for product specific environment variables."
-    source ${product_environment}
+    . ${product_environment}
 else
     pmlog warning "Missing ${product_environment}. Use default values."
 fi
@@ -78,16 +79,48 @@ if [ "x${WEBOS_COMPOSITOR_PLATFORM}" = "x" ]; then
     export QT_QPA_EGLFS_INTEGRATION="@WEBOS_EGLFS_INTEGRATION_DEFAULT@"
     export WEBOS_DRM_FORMAT="@WEBOS_DRM_FORMAT_DEFAULT@"
 fi
+# LuneOS builds without backend_drm, so the build-time default above can itself
+# be empty - plain eglfs is what we run then.
+if [ "x${WEBOS_COMPOSITOR_PLATFORM}" = "x" ]; then
+    export WEBOS_COMPOSITOR_PLATFORM=eglfs
+fi
 # Import eglfs integration specific settings if available
 eglfs_integration="@WEBOS_INSTALL_SYSCONFDIR@/surface-manager.d/eglfs-integrations/${QT_QPA_EGLFS_INTEGRATION}.env"
 if [ "${WEBOS_COMPOSITOR_PLATFORM}" = "eglfs_webos" -a -f ${eglfs_integration} ]; then
     pmlog info "Processing ${eglfs_integration} for eglfs integration specific settings."
-    source ${eglfs_integration}
+    . ${eglfs_integration}
 fi
 
-# We need the graphic card to be detected first, otherwise surface-manager won't launch
-while [ ! -e /dev/dri/card0 ] && [ ! -e /dev/graphics/fb0 ]; do
+# We need a display device to be detected first, otherwise surface-manager won't
+# launch. Deferred probing of a display driver can take a few seconds, so wait
+# for one - but bounded, and say so: a device that never shows one still has to
+# reach the failure rather than sit in this loop forever with nothing logged.
+# The card number is not always 0, and the framebuffer node is /dev/fb0 on a
+# plain Linux target and /dev/graphics/fb0 on an Android/Halium one.
+# The root the nodes are looked for under. Empty in production; the test harness
+# points it at a tree it controls, so the tests exercise the list below rather
+# than a list of their own.
+WEBOS_DISPLAY_DEVICE_ROOT="${WEBOS_DISPLAY_DEVICE_ROOT:-}"
+WEBOS_DISPLAY_DEVICE_TIMEOUT="${WEBOS_DISPLAY_DEVICE_TIMEOUT:-30}"
+
+display_device_present() {
+    for node in "${WEBOS_DISPLAY_DEVICE_ROOT}"/dev/dri/card* \
+                "${WEBOS_DISPLAY_DEVICE_ROOT}"/dev/fb0 \
+                "${WEBOS_DISPLAY_DEVICE_ROOT}"/dev/graphics/fb0; do
+        [ -e "${node}" ] && return 0
+    done
+    return 1
+}
+
+waited=0
+while ! display_device_present; do
+    if [ ${waited} -ge ${WEBOS_DISPLAY_DEVICE_TIMEOUT} ]; then
+        pmlog warning "No display device after ${waited}s, starting anyway"
+        break
+    fi
+    [ ${waited} -eq 0 ] && pmlog info "Waiting for a display device to appear ..."
     sleep 1
+    waited=$((waited + 1))
 done
 
 pmlog info "Starting @WEBOS_INSTALL_BINS@/surface-manager with flags: -platform ${WEBOS_COMPOSITOR_PLATFORM}, compositor extra options: ${WEBOS_COMPOSITOR_EXTRA_OPTIONS}"
