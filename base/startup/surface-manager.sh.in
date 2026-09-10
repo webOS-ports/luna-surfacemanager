@@ -65,7 +65,7 @@ export WEBOS_COMPOSITOR_GEOMETRY=$(luna-send -n 1 -a com.webos.surfacemanager lu
 product_environment="@WEBOS_INSTALL_SYSCONFDIR@/surface-manager.d/product.env"
 if [ -f ${product_environment} ]; then
     pmlog info "Processing ${product_environment} for product specific environment variables."
-    source ${product_environment}
+    . ${product_environment}
 else
     pmlog warning "Missing ${product_environment}. Use default values."
 fi
@@ -88,7 +88,7 @@ fi
 eglfs_integration="@WEBOS_INSTALL_SYSCONFDIR@/surface-manager.d/eglfs-integrations/${QT_QPA_EGLFS_INTEGRATION}.env"
 if [ "${WEBOS_COMPOSITOR_PLATFORM}" = "eglfs_webos" -a -f ${eglfs_integration} ]; then
     pmlog info "Processing ${eglfs_integration} for eglfs integration specific settings."
-    source ${eglfs_integration}
+    . ${eglfs_integration}
 fi
 
 # We need a display device to be detected first, otherwise surface-manager won't
