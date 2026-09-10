@@ -288,8 +288,19 @@ WebOSCoreCompositor::WebOSCoreCompositor(ExtensionFlags extensions, const char *
          * as a dynamic property to keep this out of the item's public header.
          */
         if (xdgSurface && xdgSurface->surface()) {
-            if (WebOSSurfaceItem *item = WebOSSurfaceItem::getSurfaceItemFromSurface(xdgSurface->surface()))
+            if (WebOSSurfaceItem *item = WebOSSurfaceItem::getSurfaceItemFromSurface(xdgSurface->surface())) {
                 item->setProperty("_luneosXdgToplevel", QVariant::fromValue<QObject *>(toplevel));
+                /* The property holds a plain pointer and the item outlives the
+                 * toplevel in two ordinary cases: a client that unmaps by
+                 * destroying its xdg_toplevel and keeps the wl_surface, and an
+                 * item that stays behind as a recents proxy after the window is
+                 * gone. Drop the pointer when the toplevel does, or close() and
+                 * changeSize() would qobject_cast freed memory.
+                 */
+                connect(toplevel, &QObject::destroyed, item, [item]() {
+                    item->setProperty("_luneosXdgToplevel", QVariant());
+                });
+            }
         }
 
         /* Carry appId across to the surface item. wl_webos_shell clients set it
