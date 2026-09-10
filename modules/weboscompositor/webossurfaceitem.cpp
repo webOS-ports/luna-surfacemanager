@@ -50,6 +50,7 @@
 // QFile used to arrive transitively through the Qt headers below; Qt 6.12
 // tightened those, so include it directly.
 #include <QFile>
+#include <QtWaylandCompositor/qwaylandclient.h>
 #include <QtWaylandCompositor/qwaylandseat.h>
 #include <QtWaylandCompositor/private/qwaylandkeyboard_p.h>
 #include <QtWaylandCompositor/private/qwaylandpointer_p.h>
@@ -1122,8 +1123,18 @@ void WebOSSurfaceItem::close()
         toplevel->sendClose();
     } else {
         qWarning() << "No webos shell surface exist, will close entire client !";
+        /* wl_client_destroy() runs synchronously: it tears the client's
+         * surfaces down, and WebOSCoreCompositor deletes this item when its
+         * surface is destroyed. close() is Q_INVOKABLE and is called from QML,
+         * so doing that here returns into a freed item. Let the event loop run
+         * the teardown instead - with the client as the context object the
+         * call is simply dropped if it goes away first.
+         */
         if (surface() && surface()->client()) {
-            surface()->client()->close();
+            QWaylandClient *client = surface()->client();
+            QMetaObject::invokeMethod(client, [client]() {
+                client->close();
+            }, Qt::QueuedConnection);
         }
     }
 }
