@@ -1,3 +1,9 @@
+<!--
+Copyright (c) 2026 Herman van Hazendonk <github.com@herrie.org>
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # luna-surfacemanager tests
 
 Two different things live here, with different costs and different worth.
