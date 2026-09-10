@@ -183,7 +183,10 @@ void WaylandInputPanel::onSurfaceDamaged(const QRegion &rect)
     Q_UNUSED(rect);
     
     WebOSSurface *surface = qobject_cast<WebOSSurface *>(sender());
-    if (surface) {
+    // Every input panel surface is connected here, but only the active one
+    // decides where the panel is - otherwise a second one, or one on its way
+    // out, would move the rect out from under the panel actually on screen.
+    if (surface && m_activeSurface && m_activeSurface->surface() == surface) {
         QRegion newRegion = surface->windowMask();
         QRect largestWindowMask;
         for (auto &lInputAreaRect: newRegion) {
