@@ -29,10 +29,10 @@
 // The expected geometry is printed below; compare it with where the popup
 // actually is.
 //
-// This one is a grabbing popup, which is what a menu is: Qt will not create it
-// without a recent input serial, so it has to be opened by tapping. On a device
-// with no way to touch the screen, use xdg_tooltip.qml instead - same code path
-// in the compositor, no grab, and it raises itself.
+// This is the non-grabbing variant of xdg_popup.qml, for driving over adb or a
+// serial line: a tooltip takes the same xdg_popup path through the compositor
+// but needs no input serial, so it can raise itself on a timer instead of
+// waiting to be tapped.
 
 import QtQuick
 import QtQuick.Window
@@ -40,7 +40,7 @@ import QtQuick.Window
 Window {
     id: root
     visible: true
-    title: "xdg_popup test"
+    title: "xdg_tooltip test"
     color: "#202030"
 
     readonly property int anchorX: Math.round(width / 3)
@@ -78,7 +78,7 @@ Window {
         }
         Text {
             text: popup.visible ? "popup is up - it must not be a second card"
-                                : "tap anywhere to raise the popup"
+                                : "raising the popup ..."
             color: "#ffd700"
             font.pixelSize: 24
         }
@@ -89,10 +89,17 @@ Window {
         onClicked: popup.visible = !popup.visible
     }
 
+    // No tap needed: this is the point of the tooltip variant.
+    Timer {
+        interval: 1500
+        running: true
+        onTriggered: popup.visible = true
+    }
+
     Window {
         id: popup
         transientParent: root
-        flags: Qt.Popup
+        flags: Qt.ToolTip
         x: root.anchorX
         y: root.anchorY
         width: 260

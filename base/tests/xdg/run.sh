@@ -22,7 +22,12 @@
 # clients are the opposite case on purpose, so the integration is forced back
 # to xdg-shell here.
 #
-# Usage: ./run.sh [toplevel|popup]        (default: toplevel)
+# Usage: ./run.sh [toplevel|popup|tooltip]    (default: toplevel)
+#
+# "popup" is a grabbing popup and has to be opened by tapping - Qt refuses to
+# create one without a recent input serial. "tooltip" takes the same xdg_popup
+# path in the compositor without the grab and raises itself, which is the one to
+# use over adb.
 
 set -u
 
@@ -30,7 +35,8 @@ here=$(cd "$(dirname "$0")" && pwd)
 case "${1:-toplevel}" in
     toplevel) qml_file="$here/xdg_toplevel.qml" ;;
     popup)    qml_file="$here/xdg_popup.qml" ;;
-    *)        echo "usage: $0 [toplevel|popup]" >&2; exit 2 ;;
+    tooltip)  qml_file="$here/xdg_tooltip.qml" ;;
+    *)        echo "usage: $0 [toplevel|popup|tooltip]" >&2; exit 2 ;;
 esac
 
 [ -f "$qml_file" ] || { echo "missing $qml_file" >&2; exit 1; }

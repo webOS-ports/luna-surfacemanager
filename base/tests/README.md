@@ -40,7 +40,7 @@ test, and asserting on it needs a driver that does not exist here yet.
 | Directory | What it is for |
 |---|---|
 | `qml/` | `WebOSWindow` clients, one per window type: card, popup, overlay, system UI, restricted, VKB combinations, multi-display affinity, unmap ordering, add-ons |
-| `xdg/` | xdg_shell clients — toplevel and popup. The path a GTK4, SDL, stock-Qt or Waydroid client takes |
+| `xdg/` | xdg_shell clients — toplevel, popup and tooltip. The path a GTK4, SDL, stock-Qt or Waydroid client takes |
 | `native/` | `frame_latency_test`, `touch_latency_test`, `tablet_event_test` |
 | `compositor/` | a minimal compositor harness |
 | `animations-tester/` | animation scenarios |
@@ -62,6 +62,17 @@ qml /usr/opt/webos/tests/luna-surfacemanager/popup_type.qml
 The `xdg/` clients need `QT_WAYLAND_SHELL_INTEGRATION=xdg-shell`, because
 LuneOS otherwise points every Qt client at the webOS shell and xdg_wm_base
 would never be touched. `xdg/run.sh` sets that for you.
+
+Over adb, use `tooltip` rather than `popup`: a grabbing popup is what a menu is,
+and Qt will not create one without a recent input serial, so `popup` has to be
+opened by tapping the screen. The tooltip takes the same xdg_popup path through
+the compositor without the grab and raises itself on a timer.
+
+Verified on sargo (halium arm64) on 2026-09-10 against this branch:
+`xdg_toplevel created` fires and the app id is carried to the surface item;
+`xdg_popup created` fires and the popup is **not** mapped as a card
+(`onSurfaceMapped` count matches the number of toplevels, not toplevels plus
+popups); the compositor survives repeated popup map/unmap with no restart.
 
 Each `.qml` under `xdg/` opens with a comment saying what the compositor is
 supposed to do with it and what a failure looks like — read that before
