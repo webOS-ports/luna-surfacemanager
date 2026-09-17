@@ -50,6 +50,7 @@
 // QFile used to arrive transitively through the Qt headers below; Qt 6.12
 // tightened those, so include it directly.
 #include <QFile>
+#include <QtWaylandCompositor/qwaylandclient.h>
 #include <QtWaylandCompositor/qwaylandseat.h>
 #include <QtWaylandCompositor/private/qwaylandkeyboard_p.h>
 #include <QtWaylandCompositor/private/qwaylandpointer_p.h>
@@ -1122,8 +1123,18 @@ void WebOSSurfaceItem::close()
         toplevel->sendClose();
     } else {
         qWarning() << "No webos shell surface exist, will close entire client !";
+        /* wl_client_destroy() runs synchronously: it tears the client's
+         * surfaces down, and WebOSCoreCompositor deletes this item when its
+         * surface is destroyed. close() is Q_INVOKABLE and is called from QML,
+         * so doing that here returns into a freed item. Let the event loop run
+         * the teardown instead - with the client as the context object the
+         * call is simply dropped if it goes away first.
+         */
         if (surface() && surface()->client()) {
-            surface()->client()->close();
+            QWaylandClient *client = surface()->client();
+            QMetaObject::invokeMethod(client, [client]() {
+                client->close();
+            }, Qt::QueuedConnection);
         }
     }
 }
@@ -1308,8 +1319,6 @@ void WebOSSurfaceItem::updateSubsurfaceGeometry()
      * parentChanged - so read the list QWaylandCompositor appends to, which is
      * what QWaylandQuickItem itself iterates when it adopts subsurfaces. */
     const auto subsurfaces = QWaylandSurfacePrivate::get(surface())->subsurfaceChildren;
-    if (subsurfaces.isEmpty())
-        return;
 
     const QList<QQuickItem *> children = childItems();
     for (QQuickItem *child : children) {
@@ -1324,14 +1333,25 @@ void WebOSSurfaceItem::updateSubsurfaceGeometry()
                 break;
             }
         }
-        if (!isSubsurface)
-            continue;
+
+        /* An xdg_popup is positioned in the same client coordinate space, by
+         * its positioner rather than by wl_subsurface.set_position, so it is
+         * scaled here the same way. WebOSCoreCompositor leaves the position it
+         * was given on the item. */
+        QPoint pos;
+        if (isSubsurface) {
+            pos = QWaylandSurfacePrivate::get(sub->surface())->subsurfacePosition();
+        } else {
+            const QVariant popupPosition = sub->property("_luneosPopupPosition");
+            if (!popupPosition.isValid())
+                continue;
+            pos = popupPosition.toPoint();
+        }
 
         const QSizeF natural = sub->surface()->destinationSize();
         if (natural.isEmpty())
             continue;
 
-        const QPoint pos = QWaylandSurfacePrivate::get(sub->surface())->subsurfacePosition();
         sub->setPosition(QPointF(pos.x() * sx, pos.y() * sy));
         /* An explicit size sticks: Qt only ever sets the implicit one. */
         sub->setSize(QSizeF(natural.width() * sx, natural.height() * sy));

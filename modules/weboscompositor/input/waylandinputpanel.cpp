@@ -181,19 +181,35 @@ void WaylandInputPanel::onInputPanelSurfaceUnmapped()
 void WaylandInputPanel::onSurfaceDamaged(const QRegion &rect)
 {
     Q_UNUSED(rect);
-    
-    WebOSSurface *surface = qobject_cast<WebOSSurface *>(sender());
-    if (surface) {
-        QRegion newRegion = surface->windowMask();
-        QRect largestWindowMask;
-        for (auto &lInputAreaRect: newRegion) {
-            if (lInputAreaRect.width() > largestWindowMask.width()) largestWindowMask = lInputAreaRect;
-        }
-        
-        if (largestWindowMask.width()>0) {
-            // consider that the first defined mask region is the input area
-            setInputPanelRect(largestWindowMask);
-        }
+
+    updateInputPanelRect(qobject_cast<WebOSSurface *>(sender()));
+}
+
+void WaylandInputPanel::updateInputPanelRect(WebOSSurface *surface)
+{
+    if (!surface)
+        return;
+
+    /* Every input panel surface is connected to onSurfaceDamaged, and one that
+     * is not the active panel must not move the rect out from under the panel
+     * on screen. There is no active one to compare against on the panel's very
+     * first commit though - QWaylandSurface emits damaged before
+     * hasContentChanged, and it is the latter that ends up making the surface
+     * active - so take the mask while nothing is active yet, and read it again
+     * from updateActiveInputPanelSurface() once one is.
+     */
+    if (m_activeSurface && m_activeSurface->surface() && m_activeSurface->surface() != surface)
+        return;
+
+    QRegion newRegion = surface->windowMask();
+    QRect largestWindowMask;
+    for (auto &lInputAreaRect: newRegion) {
+        if (lInputAreaRect.width() > largestWindowMask.width()) largestWindowMask = lInputAreaRect;
+    }
+
+    if (largestWindowMask.width()>0) {
+        // consider that the first defined mask region is the input area
+        setInputPanelRect(largestWindowMask);
     }
 }
 
@@ -219,6 +235,9 @@ void WaylandInputPanel::updateActiveInputPanelSurface(WaylandInputPanelSurface *
     if (m_activeSurface != target) {
         qInfo() << "changing active inputPanelSurface" << m_activeSurface << "->" << target;
         m_activeSurface = target;
+        // Its mask may well have arrived before it became the active one.
+        if (m_activeSurface)
+            updateInputPanelRect(qobject_cast<WebOSSurface *>(m_activeSurface->surface()));
     }
 
     updateInputPanelState();
