@@ -1515,7 +1515,18 @@ void WebOSCoreCompositor::commitOutputUpdate(QQuickWindow *window, QRect geometr
         return;
     }
 
-    QWaylandOutputMode mode(geometry.size() * ratio, output->currentMode().refreshRate());
+    // wl_output.mode is the panel's own, untransformed size; the transform set
+    // below is what turns it into the logical size on the client side. The
+    // geometry passed in is already logical, so for a quarter turn it has to
+    // be transposed back, or every spec-following client - Chromium's ozone
+    // (WaylandScreen::AddOrUpdateDisplay), Qt's wayland client - transposes it
+    // a second time and sees a landscape screen on a portrait device. On the
+    // MP01 that made WAM size its web views to a 600-pixel-high display and
+    // shrink every portrait card by 600/657.
+    QSize modeSize = geometry.size() * ratio;
+    if (rotation % 180 == 90)
+        modeSize.transpose();
+    QWaylandOutputMode mode(modeSize, output->currentMode().refreshRate());
     output->addMode(mode, true);
     output->setCurrentMode(mode);
 
