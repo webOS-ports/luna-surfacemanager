@@ -4,5 +4,8 @@
     ],
     "surfacemanager.query": [
         "com.webos.surfacemanager/getForegroundAppInfo"
+    ],
+    "surfacemanager.display": [
+        "com.webos.surfacemanager/setDisplayState"
     ]
 }
