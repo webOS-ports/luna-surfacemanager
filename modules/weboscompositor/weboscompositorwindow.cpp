@@ -317,7 +317,35 @@ bool WebOSCompositorWindow::setDisplayPower(bool on)
     }
 
     qInfo() << "Setting display power" << (on ? "on" : "off") << "for" << m_displayName;
-    platformScreen->setPowerState(on ? QPlatformScreen::PowerStateOn : QPlatformScreen::PowerStateOff);
+
+    // On the DRM/KMS backend the power state disables the CRTC, and a scene
+    // graph that keeps presenting into a disabled CRTC makes every atomic
+    // commit fail with EINVAL - permanently, because Qt never re-enables it.
+    // Measured on a PineTab2 (2026-09-20): one display-off, then 2371 "Failed
+    // to commit atomic request (code=-22)" in 25 minutes, the panel lit again
+    // by the next display-on but nothing ever drawn, which looks exactly like
+    // a frozen tablet with a dead touchscreen. A PinePhone Pro hung outright
+    // on the way into suspend with the same stack.
+    //
+    // So stop presenting for as long as the panel is off: hiding the window
+    // takes it out of the render loop and releases its surface, and showing it
+    // again re-establishes the mode. The Halium devices run the hwcomposer QPA
+    // plugin, which powers the panel itself and must keep its window visible -
+    // hence the backend test rather than doing this everywhere.
+    const bool drmBackend =
+        QGuiApplication::platformName().startsWith(QLatin1String("eglfs"));
+
+    if (on) {
+        if (drmBackend && !isVisible())
+            setVisible(true);
+        platformScreen->setPowerState(QPlatformScreen::PowerStateOn);
+        requestUpdate();
+    } else {
+        platformScreen->setPowerState(QPlatformScreen::PowerStateOff);
+        if (drmBackend && isVisible())
+            setVisible(false);
+    }
+
     m_displayPowerOn = on;
     emit displayPowerOnChanged();
     return true;
