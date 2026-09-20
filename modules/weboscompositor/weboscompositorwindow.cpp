@@ -318,33 +318,37 @@ bool WebOSCompositorWindow::setDisplayPower(bool on)
 
     qInfo() << "Setting display power" << (on ? "on" : "off") << "for" << m_displayName;
 
-    // On the DRM/KMS backend the power state disables the CRTC, and a scene
-    // graph that keeps presenting into a disabled CRTC makes every atomic
-    // commit fail with EINVAL - permanently, because Qt never re-enables it.
-    // Measured on a PineTab2 (2026-09-20): one display-off, then 2371 "Failed
-    // to commit atomic request (code=-22)" in 25 minutes, the panel lit again
-    // by the next display-on but nothing ever drawn, which looks exactly like
-    // a frozen tablet with a dead touchscreen. A PinePhone Pro hung outright
-    // on the way into suspend with the same stack.
+    // The DRM/KMS backend gets neither half of this treatment.
     //
-    // So stop presenting for as long as the panel is off: hiding the window
-    // takes it out of the render loop and releases its surface, and showing it
-    // again re-establishes the mode. The Halium devices run the hwcomposer QPA
-    // plugin, which powers the panel itself and must keep its window visible -
-    // hence the backend test rather than doing this everywhere.
-    const bool drmBackend =
-        QGuiApplication::platformName().startsWith(QLatin1String("eglfs"));
-
-    if (on) {
-        if (drmBackend && !isVisible())
-            setVisible(true);
-        platformScreen->setPowerState(QPlatformScreen::PowerStateOn);
-        requestUpdate();
-    } else {
-        platformScreen->setPowerState(QPlatformScreen::PowerStateOff);
-        if (drmBackend && isVisible())
-            setVisible(false);
+    // Disabling the CRTC through QPlatformScreen while the scene graph keeps
+    // presenting makes every atomic commit fail with EINVAL, permanently:
+    // measured on a PineTab2 (2026-09-20), one display-off produced 2371
+    // "Failed to commit atomic request (code=-22)" in 25 minutes, the panel
+    // lit again by the next display-on but nothing ever drawn. A PinePhone Pro
+    // hung entering suspend with the same stack.
+    //
+    // Taking the window out of the render loop to stop those commits fixes the
+    // commits and breaks something else: hiding it releases the backend's
+    // input devices, and re-acquiring them resets the USB keyboard - 14 port
+    // resets in five minutes on the PineTab2, each one flashing the keyboard
+    // backlight, against none in the whole previous boot.
+    //
+    // So leave the pipeline alone here. On these devices the display manager
+    // already takes the backlight to zero through nyx, which is where the
+    // power goes; the panel and DSI stay powered, which costs little next to
+    // the backlight. The Halium devices keep the real panel-off below: their
+    // hwcomposer plugin owns panel power and handles it correctly.
+    if (QGuiApplication::platformName().startsWith(QLatin1String("eglfs"))) {
+        qInfo() << "Leaving panel power to the backlight on" << m_displayName
+                << "- the DRM backend cannot take the CRTC down under a live"
+                << "scene graph";
+        m_displayPowerOn = on;
+        emit displayPowerOnChanged();
+        return true;
     }
+
+    platformScreen->setPowerState(on ? QPlatformScreen::PowerStateOn
+                                     : QPlatformScreen::PowerStateOff);
 
     m_displayPowerOn = on;
     emit displayPowerOnChanged();
