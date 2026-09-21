@@ -25,3 +25,10 @@ SUBDIRS = \
 cursor_theme {
     SUBDIRS += cursors
 }
+
+# The test suite is built only when the recipe asks for it. A production image
+# has no use for the test apps, and test-sysbus installs a second set of role
+# and permission files that must not sit next to the real ones.
+webos_tests {
+    SUBDIRS += tests
+}

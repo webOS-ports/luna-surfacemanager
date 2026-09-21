@@ -25,6 +25,7 @@
 
 class QWaylandCompositor;
 class WebOSSurfaceItem;
+class WebOSSurface;
 class QWaylandSurface;
 
 class WaylandInputPanelSurface : public QObject {
@@ -93,6 +94,9 @@ signals:
 private:
     // methods
     void updateActiveInputPanelSurface(WaylandInputPanelSurface *surface = 0);
+
+private:
+    void updateInputPanelRect(WebOSSurface *surface);
 
 private slots:
     void onInputPanelSurfaceMapped();

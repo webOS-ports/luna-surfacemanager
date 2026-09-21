@@ -59,6 +59,8 @@ Item {
                 }
                 return;
             case "close":
+                if (!modelData.toastInfo || modelData.toastInfo.timestamp === undefined)
+                    return;
                 for (j = 0; j < count; j++) {
                     if (get(j).timestamp === modelData.toastInfo.timestamp) {
                         remove(j);

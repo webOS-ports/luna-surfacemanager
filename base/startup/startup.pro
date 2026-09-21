@@ -30,3 +30,7 @@ product.path = $$WEBOS_INSTALL_SYSCONFDIR/surface-manager.d
 product.files = $$replace_envs(product.env.in, product.env)
 
 INSTALLS += startup envs product
+
+# The startup script tests run on a build host, not on a device, so they are
+# not installed anywhere - see tests/run.sh.
+OTHER_FILES += tests/run.sh
