@@ -62,6 +62,7 @@ WebOSCompositorWindow::WebOSCompositorWindow(QString screenName, QString geometr
     , m_outputGeometryPending(false)
     , m_outputGeometryPendingInterval(0)
     , m_cursorVisible(false)
+    , m_displayPowerOn(true)
     , m_output(nullptr)
     , m_inputDevice(nullptr)
     , m_mouseGrabberItem(nullptr)
@@ -299,6 +300,58 @@ bool WebOSCompositorWindow::setCompositorMain(const QUrl& main, const QString& i
         qWarning() << "No compositor assigned, will try to load" << m_main << "when showing the window" << this;
     }
 
+    return true;
+}
+
+bool WebOSCompositorWindow::setDisplayPower(bool on)
+{
+    QPlatformScreen *platformScreen = screen() ? screen()->handle() : nullptr;
+    if (!platformScreen) {
+        qWarning() << "No platform screen for" << m_displayName << ", cannot set display power" << on;
+        return false;
+    }
+
+    if (on == m_displayPowerOn) {
+        qInfo() << "Display power already" << (on ? "on" : "off") << "for" << m_displayName;
+        return true;
+    }
+
+    qInfo() << "Setting display power" << (on ? "on" : "off") << "for" << m_displayName;
+
+    // The DRM/KMS backend gets neither half of this treatment.
+    //
+    // Disabling the CRTC through QPlatformScreen while the scene graph keeps
+    // presenting makes every atomic commit fail with EINVAL, permanently:
+    // measured on a PineTab2 (2026-09-20), one display-off produced 2371
+    // "Failed to commit atomic request (code=-22)" in 25 minutes, the panel
+    // lit again by the next display-on but nothing ever drawn. A PinePhone Pro
+    // hung entering suspend with the same stack.
+    //
+    // Taking the window out of the render loop to stop those commits fixes the
+    // commits and breaks something else: hiding it releases the backend's
+    // input devices, and re-acquiring them resets the USB keyboard - 14 port
+    // resets in five minutes on the PineTab2, each one flashing the keyboard
+    // backlight, against none in the whole previous boot.
+    //
+    // So leave the pipeline alone here. On these devices the display manager
+    // already takes the backlight to zero through nyx, which is where the
+    // power goes; the panel and DSI stay powered, which costs little next to
+    // the backlight. The Halium devices keep the real panel-off below: their
+    // hwcomposer plugin owns panel power and handles it correctly.
+    if (QGuiApplication::platformName().startsWith(QLatin1String("eglfs"))) {
+        qInfo() << "Leaving panel power to the backlight on" << m_displayName
+                << "- the DRM backend cannot take the CRTC down under a live"
+                << "scene graph";
+        m_displayPowerOn = on;
+        emit displayPowerOnChanged();
+        return true;
+    }
+
+    platformScreen->setPowerState(on ? QPlatformScreen::PowerStateOn
+                                     : QPlatformScreen::PowerStateOff);
+
+    m_displayPowerOn = on;
+    emit displayPowerOnChanged();
     return true;
 }
 

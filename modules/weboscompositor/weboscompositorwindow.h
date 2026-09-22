@@ -51,6 +51,7 @@ class WEBOS_COMPOSITOR_EXPORT WebOSCompositorWindow : public QQuickView {
     Q_PROPERTY(bool outputGeometryPending READ outputGeometryPending WRITE setOutputGeometryPending NOTIFY outputGeometryPendingChanged)
     Q_PROPERTY(int outputGeometryPendingInterval READ outputGeometryPendingInterval WRITE setOutputGeometryPendingInterval NOTIFY outputGeometryPendingIntervalChanged)
     Q_PROPERTY(bool cursorVisible READ cursorVisible NOTIFY cursorVisibleChanged)
+    Q_PROPERTY(bool displayPowerOn READ displayPowerOn NOTIFY displayPowerOnChanged)
     Q_PROPERTY(QQuickItem *viewsRoot READ viewsRoot WRITE setViewsRoot NOTIFY viewsRootChanged)
     // State for App mirroring
     Q_PROPERTY(AppMirroringState appMirroringState READ appMirroringState NOTIFY appMirroringStateChanged)
@@ -86,6 +87,12 @@ public:
     bool setCompositorMain(const QUrl& main, const QString& importPath = QString());
 
     Q_INVOKABLE void showWindow();
+
+    // Panel power. Forwards to QPlatformScreen::setPowerState() of the screen
+    // this window is on (DRM DPMS on eglfs-kms, hwcomposer setPowerMode on
+    // Halium). Returns false if the platform screen is unavailable.
+    Q_INVOKABLE bool setDisplayPower(bool on);
+    bool displayPowerOn() const { return m_displayPowerOn; }
 
     int displayId() const { return m_displayId; }
     QString displayName() const { return m_displayName; }
@@ -173,6 +180,7 @@ protected:
     WebOSCoreCompositor *compositor() const { return m_compositor; }
 
 signals:
+    void displayPowerOnChanged();
     void outputGeometryChanged();
     void outputRotationChanged();
     void outputClipChanged();
@@ -252,6 +260,7 @@ private:
     int m_outputGeometryPendingInterval;
 
     bool m_cursorVisible;
+    bool m_displayPowerOn;
 
     QQuickItem* m_viewsRoot;
     QWaylandQuickOutput *m_output;

@@ -29,7 +29,7 @@ Service {
     property var views
     property var controllers
 
-    readonly property var defaultMethods: ["getForegroundAppInfo", "captureCompositorOutput"]
+    readonly property var defaultMethods: ["getForegroundAppInfo", "captureCompositorOutput", "setDisplayState"]
 
     readonly property ForegroundAppInfoMgr foregroundAppInfoMgr: ForegroundAppInfoMgr {}
 
@@ -67,6 +67,51 @@ Service {
 
         ret.foregroundAppInfo = foregroundAppInfoMgr.getForegroundAppInfo();
 
+        return JSON.stringify(ret);
+    }
+
+    // luna://com.webos.surfacemanager/setDisplayState {"state":"on"|"off", "displayId": n}
+    // Powers the panel of a compositor window on or off (QPlatformScreen::setPowerState).
+    // Called by com.palm.display when its display state goes off/on so the
+    // panel is really blanked, not just the backlight.
+    function setDisplayState(param) {
+        var ret = {};
+        var window = compositor.windows[0];
+        var on;
+
+        console.info("LS2 method handler is called with param: " + JSON.stringify(param));
+
+        if (param.state === "on") {
+            on = true;
+        } else if (param.state === "off") {
+            on = false;
+        } else {
+            ret.errorCode = 107;
+            ret.errorText = "ERR_INVALID_STATE";
+            console.warn("errorCode: " + ret.errorCode + ", errorText: " + ret.errorText);
+            return JSON.stringify(ret);
+        }
+
+        if (param.displayId !== undefined) {
+            if (typeof param.displayId === 'number' && param.displayId >= 0 && param.displayId < compositor.windows.length) {
+                window = compositor.windows[param.displayId];
+            } else {
+                ret.errorCode = 106;
+                ret.errorText = "ERR_INVALID_DISPLAY";
+                console.warn("errorCode: " + ret.errorCode + ", errorText: " + ret.errorText);
+                return JSON.stringify(ret);
+            }
+        }
+
+        if (!window.setDisplayPower(on)) {
+            ret.errorCode = 108;
+            ret.errorText = "ERR_NO_PLATFORM_SCREEN";
+            console.warn("errorCode: " + ret.errorCode + ", errorText: " + ret.errorText);
+            return JSON.stringify(ret);
+        }
+
+        ret.state = param.state;
+        ret.displayId = window.displayId;
         return JSON.stringify(ret);
     }
 
