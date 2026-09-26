@@ -350,6 +350,13 @@ bool WebOSCompositorWindow::setDisplayPower(bool on)
     platformScreen->setPowerState(on ? QPlatformScreen::PowerStateOn
                                      : QPlatformScreen::PowerStateOff);
 
+    // The hwcomposer platform drops every frame rendered while the display is
+    // off, and nothing asks for one when it comes back: the panel stayed dark
+    // until something on screen changed by itself - up to a minute, for the
+    // lock screen clock (BlackBerry KEY2). Render one now.
+    if (on)
+        update();
+
     m_displayPowerOn = on;
     emit displayPowerOnChanged();
     return true;
