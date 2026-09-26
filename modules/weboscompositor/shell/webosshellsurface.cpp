@@ -298,15 +298,22 @@ void WebOSShellSurface::set_state(struct wl_client *client, struct wl_resource *
     }
 
     if (!that->m_surface->isMapped()) {
-        // Not something to drop. An app being raised is by definition the one
-        // not currently showing, so its surface has no committed buffer and
-        // this is exactly the path a raise takes: WebAppWayland::Raise() ->
-        // set_state(FULLSCREEN) on a backgrounded card. Dropping it meant
-        // stateChangeRequested() never fired and the app never came forward.
-        // Keep it until the surface maps, then replay it.
-        qInfo() << "state change deferred until mapped:" << that->m_state << "->" << newState
+        // Neither drop this nor merely defer it. An app being raised is by
+        // definition the one not currently showing, so its surface has no
+        // committed buffer - and it will not get one until something shows it,
+        // which is precisely what this request asks for. Waiting for a map that
+        // only the request itself can bring about is circular.
+        //
+        // Deliver it now and let the shell decide; raising an app that has no
+        // card is a no-op there. The state is still recorded for replay on map,
+        // which covers a surface that genuinely was not ready yet, and that
+        // replay is self-limiting: once the state has actually been applied,
+        // setState() has moved m_state and flushPendingState() does nothing.
+        qInfo() << "state change on unmapped surface:" << that->m_state << "->" << newState
                 << that->m_surface << that->m_surface->appId();
         that->m_pendingState = newState;
+        if (that->m_state != newState)
+            emit that->stateChangeRequested(newState);
         return;
     }
 
