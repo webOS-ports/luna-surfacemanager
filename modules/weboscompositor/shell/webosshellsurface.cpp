@@ -133,6 +133,7 @@ WebOSShellSurface::WebOSShellSurface(struct wl_client* client, uint32_t id, WebO
     , m_keyMask(WebOSSurfaceItem::KeyMaskDefault)
     , m_state(Qt::WindowNoState)
     , m_preparedState(Qt::WindowNoState)
+    , m_pendingState(Qt::WindowNoState)
     , m_owner(owner)
     , m_surface(surface)
 {
@@ -297,7 +298,22 @@ void WebOSShellSurface::set_state(struct wl_client *client, struct wl_resource *
     }
 
     if (!that->m_surface->isMapped()) {
-        qWarning() << "Ignored for unmapped surface" << that->m_surface << that << that->m_state << newState;
+        // Neither drop this nor merely defer it. An app being raised is by
+        // definition the one not currently showing, so its surface has no
+        // committed buffer - and it will not get one until something shows it,
+        // which is precisely what this request asks for. Waiting for a map that
+        // only the request itself can bring about is circular.
+        //
+        // Deliver it now and let the shell decide; raising an app that has no
+        // card is a no-op there. The state is still recorded for replay on map,
+        // which covers a surface that genuinely was not ready yet, and that
+        // replay is self-limiting: once the state has actually been applied,
+        // setState() has moved m_state and flushPendingState() does nothing.
+        qInfo() << "state change on unmapped surface:" << that->m_state << "->" << newState
+                << that->m_surface << that->m_surface->appId();
+        that->m_pendingState = newState;
+        if (that->m_state != newState)
+            emit that->stateChangeRequested(newState);
         return;
     }
 
@@ -305,6 +321,21 @@ void WebOSShellSurface::set_state(struct wl_client *client, struct wl_resource *
         qInfo() << "state change requested:" << that->m_state << "->" << newState
                      << that->m_surface << that->m_surface->appId();
         emit that->stateChangeRequested(newState);
+    }
+}
+
+void WebOSShellSurface::flushPendingState()
+{
+    if (m_pendingState == Qt::WindowNoState)
+        return;
+
+    Qt::WindowState pending = m_pendingState;
+    m_pendingState = Qt::WindowNoState;
+
+    if (m_state != pending) {
+        qInfo() << "deferred state change applied:" << m_state << "->" << pending
+                << m_surface << m_surface->appId();
+        emit stateChangeRequested(pending);
     }
 }
 
