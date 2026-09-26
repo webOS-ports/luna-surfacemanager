@@ -133,6 +133,7 @@ WebOSShellSurface::WebOSShellSurface(struct wl_client* client, uint32_t id, WebO
     , m_keyMask(WebOSSurfaceItem::KeyMaskDefault)
     , m_state(Qt::WindowNoState)
     , m_preparedState(Qt::WindowNoState)
+    , m_pendingState(Qt::WindowNoState)
     , m_owner(owner)
     , m_surface(surface)
 {
@@ -297,7 +298,15 @@ void WebOSShellSurface::set_state(struct wl_client *client, struct wl_resource *
     }
 
     if (!that->m_surface->isMapped()) {
-        qWarning() << "Ignored for unmapped surface" << that->m_surface << that << that->m_state << newState;
+        // Not something to drop. An app being raised is by definition the one
+        // not currently showing, so its surface has no committed buffer and
+        // this is exactly the path a raise takes: WebAppWayland::Raise() ->
+        // set_state(FULLSCREEN) on a backgrounded card. Dropping it meant
+        // stateChangeRequested() never fired and the app never came forward.
+        // Keep it until the surface maps, then replay it.
+        qInfo() << "state change deferred until mapped:" << that->m_state << "->" << newState
+                << that->m_surface << that->m_surface->appId();
+        that->m_pendingState = newState;
         return;
     }
 
@@ -305,6 +314,21 @@ void WebOSShellSurface::set_state(struct wl_client *client, struct wl_resource *
         qInfo() << "state change requested:" << that->m_state << "->" << newState
                      << that->m_surface << that->m_surface->appId();
         emit that->stateChangeRequested(newState);
+    }
+}
+
+void WebOSShellSurface::flushPendingState()
+{
+    if (m_pendingState == Qt::WindowNoState)
+        return;
+
+    Qt::WindowState pending = m_pendingState;
+    m_pendingState = Qt::WindowNoState;
+
+    if (m_state != pending) {
+        qInfo() << "deferred state change applied:" << m_state << "->" << pending
+                << m_surface << m_surface->appId();
+        emit stateChangeRequested(pending);
     }
 }
 

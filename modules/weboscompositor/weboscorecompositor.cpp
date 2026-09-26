@@ -674,6 +674,12 @@ void WebOSCoreCompositor::onSurfaceMapped(QWaylandSurface *surface, WebOSSurface
 
         qDebug() << item << "Items in compositor: " <<  getItems();
         emit surfaceMapped(item);
+
+        // The client may have asked for a window state while this surface was
+        // still unmapped; WebOSShellSurface held it rather than dropping it.
+        // Replay it now the item exists in the models and the shell has seen it.
+        if (item->shellSurface())
+            item->shellSurface()->flushPendingState();
     }
 }
 
@@ -994,6 +1000,9 @@ void WebOSCoreCompositor::addSurfaceItem(WebOSSurfaceItem *item)
     m_surfaceModel->surfaceMapped(item);
     m_surfaces << item;
     emit surfaceMapped(item);
+
+    if (item->shellSurface())
+        item->shellSurface()->flushPendingState();
 }
 
 void WebOSCoreCompositor::removeSurfaceItem(WebOSSurfaceItem* item, bool emitSurfaceDestroyed)

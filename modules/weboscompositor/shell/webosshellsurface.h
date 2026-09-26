@@ -69,6 +69,11 @@ public:
 
     void setState(Qt::WindowState state);
     void prepareState(Qt::WindowState state);
+    /*!
+     * Emits a state change the client asked for while its surface was still
+     * unmapped. Called once the surface is mapped; a no-op otherwise.
+     */
+    void flushPendingState();
     void close();
 
     WebOSSurfaceItem::LocationHints locationHint() { return m_locationHint; }
@@ -124,6 +129,9 @@ private:
     WebOSSurfaceItem::KeyMasks m_keyMask;
     Qt::WindowState m_state;
     Qt::WindowState m_preparedState;
+    // A state the client requested while its surface was unmapped, replayed by
+    // flushPendingState() once it maps. Qt::WindowNoState means nothing pending.
+    Qt::WindowState m_pendingState;
     wl_resource* m_owner;
     QVariantMap m_properties;
     QRegion m_exposed;
