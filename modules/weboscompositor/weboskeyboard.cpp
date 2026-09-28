@@ -15,6 +15,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "weboskeyboard.h"
 #include <QWaylandCompositor>
+#include <QWaylandClient>
+#include <QWaylandSurface>
 #include <QtWaylandCompositor/private/qwaylandkeyboard_p.h>
 
 namespace {
@@ -221,11 +223,24 @@ void WebOSKeyboard::sendModifiersToFocus(uint32_t depressed, uint32_t latched, u
 {
     Q_D(QWaylandKeyboard);
 
-#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
-    d->send_modifiers(compositor()->nextSerial(), depressed, latched, locked, grp);
-#else
-    d->modifiers(compositor()->nextSerial(), depressed, latched, locked, grp);
-#endif
+    QWaylandSurface *surface = focus();
+
+    if (!surface || !surface->client())
+        return;
+
+    // Addressed to the focused client's own keyboard resources, deliberately,
+    // and not through the send_modifiers() overload that takes no resource.
+    // That one goes to whichever single resource the interface happens to be
+    // tracking, and while an input method holds a grab there is more than one -
+    // the application's and the grab's, which belong to different clients. The
+    // grab is the last one bound, so the untargeted form was as likely as not
+    // to tell the input method about modifiers rather than the application
+    // that is about to be sent the key.
+    const uint32_t serial = compositor()->nextSerial();
+
+    const auto resources = d->resourceMap().values(surface->client()->client());
+    for (auto *resource : resources)
+        d->send_modifiers(resource->handle, serial, depressed, latched, locked, grp);
 }
 
 
