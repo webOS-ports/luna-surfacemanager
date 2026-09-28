@@ -289,9 +289,6 @@ void WaylandInputMethodContext::key(struct wl_client *client, struct wl_resource
         return;
     }
 
-    qWarning() << "[inputMethod] key" << key << "state" << state
-               << "-> focus" << keyboard->focus();
-
     // Back to X-style, the form sendKeyEventToFocus() and the rest of
     // QWaylandKeyboard's key API expect.
     keyboard->sendKeyEventToFocus(key + 8, state);
@@ -315,8 +312,6 @@ void WaylandInputMethodContext::modifiers(struct wl_client *client, struct wl_re
 
     if (!keyboard)
         return;
-
-    qWarning() << "[inputMethod] modifiers" << mods_depressed << "-> focus" << keyboard->focus();
 
     keyboard->sendModifiersToFocus(mods_depressed, mods_latched, mods_locked, group);
 }
