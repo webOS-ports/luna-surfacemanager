@@ -36,6 +36,8 @@
 #include <QPointer>
 
 #include "weboscorecompositor.h"
+
+#include <linux/input.h>
 #include "weboscompositorwindow.h"
 #include "webosforeign.h"
 #include "weboswindowmodel.h"
@@ -1473,6 +1475,35 @@ void WebOSCoreCompositor::setSurfaceItemClosePolicy(QVariantMap &surfaceItemClos
 
 /* Compositor should call this whenever system UI shows/disappears
  * to restore cursor shape without mouse move */
+void WebOSCoreCompositor::sendEditCommand(const QString &command)
+{
+    // Ctrl+X/C/V/A. The shell's edit overlay types the shortcut rather than
+    // asking the application to do the edit, so that it needs nothing of the
+    // application beyond what a keyboard already gives it.
+    static const QHash<QString, uint> commands = {
+        {QStringLiteral("cut"),       KEY_X},
+        {QStringLiteral("copy"),      KEY_C},
+        {QStringLiteral("paste"),     KEY_V},
+        {QStringLiteral("selectAll"), KEY_A},
+    };
+
+    const auto it = commands.constFind(command);
+
+    if (it == commands.constEnd()) {
+        qWarning() << "Unknown edit command" << command;
+        return;
+    }
+
+    auto *keyboard = static_cast<WebOSKeyboard *>(defaultSeat()->keyboard());
+
+    if (!keyboard) {
+        qWarning() << "No keyboard to send" << command << "with";
+        return;
+    }
+
+    keyboard->sendShortcutToFocus(it.value());
+}
+
 void WebOSCoreCompositor::updateCursorFocus()
 {
     PMTRACE_FUNCTION;

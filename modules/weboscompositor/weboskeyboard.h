@@ -93,7 +93,25 @@ public:
      */
     void sendCurrentModifiersToFocus();
 
+    /*! \brief Type a Ctrl shortcut at the focused surface.
+     *
+     * For the shell's edit overlay: Cut, Copy, Paste and Select All are just
+     * Ctrl+X/C/V/A, and every client already knows what to do with those, so
+     * the overlay needs no per-toolkit command channel and no new API in the
+     * web runtime - it types the shortcut the user would have typed.
+     *
+     * The modifier mask is built from the keymap rather than taken from our
+     * xkb state, because nothing is physically held down: this is a synthetic
+     * shortcut. The real Ctrl key events are sent as well as the mask, since
+     * clients are split on which they believe - Chromium derives the state
+     * from the key events, Qt reads only wl_keyboard.modifiers.
+     *
+     * \a evdevCode is the raw evdev code of the letter, e.g. KEY_C.
+     */
+    void sendShortcutToFocus(uint evdevCode);
+
 private:
+    void sendModifiersMaskToFocus(uint32_t mods_depressed, uint32_t mods_latched, uint32_t mods_locked, uint32_t group);
     void sendKeyEvent(uint code, uint32_t state);
     void pendingFocusDestroyed(void *data);
 

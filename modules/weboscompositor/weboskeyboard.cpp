@@ -19,6 +19,8 @@
 #include <QWaylandSurface>
 #include <QtWaylandCompositor/private/qwaylandkeyboard_p.h>
 
+#include <linux/input.h>
+
 namespace {
 
 //! A positive integer from the environment, or \a fallback.
@@ -219,7 +221,8 @@ void WebOSKeyboard::sendKeyEventToFocus(uint code, uint32_t state)
     }
 }
 
-void WebOSKeyboard::sendCurrentModifiersToFocus()
+//! Sends a modifier mask to every keyboard resource of the focused client.
+void WebOSKeyboard::sendModifiersMaskToFocus(uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t grp)
 {
     Q_D(QWaylandKeyboard);
 
@@ -227,17 +230,6 @@ void WebOSKeyboard::sendCurrentModifiersToFocus()
 
     if (!surface || !surface->client())
         return;
-
-#if QT_CONFIG(xkbcommon)
-    auto *xkb_state = d->xkbState();
-
-    if (!xkb_state)
-        return;
-
-    const uint32_t depressed = xkb_state_serialize_mods(xkb_state, (xkb_state_component)XKB_STATE_MODS_DEPRESSED);
-    const uint32_t latched   = xkb_state_serialize_mods(xkb_state, (xkb_state_component)XKB_STATE_MODS_LATCHED);
-    const uint32_t locked    = xkb_state_serialize_mods(xkb_state, (xkb_state_component)XKB_STATE_MODS_LOCKED);
-    const uint32_t grp       = xkb_state_serialize_group(xkb_state, (xkb_state_component)XKB_STATE_EFFECTIVE);
 
     // Addressed to the focused client's own keyboard resources, deliberately,
     // and not through the send_modifiers() overload that takes no resource.
@@ -252,6 +244,59 @@ void WebOSKeyboard::sendCurrentModifiersToFocus()
     const auto resources = d->resourceMap().values(surface->client()->client());
     for (auto *resource : resources)
         d->send_modifiers(resource->handle, serial, depressed, latched, locked, grp);
+}
+
+void WebOSKeyboard::sendCurrentModifiersToFocus()
+{
+    Q_D(QWaylandKeyboard);
+
+#if QT_CONFIG(xkbcommon)
+    auto *xkb_state = d->xkbState();
+
+    if (!xkb_state)
+        return;
+
+    const uint32_t depressed = xkb_state_serialize_mods(xkb_state, (xkb_state_component)XKB_STATE_MODS_DEPRESSED);
+    const uint32_t latched   = xkb_state_serialize_mods(xkb_state, (xkb_state_component)XKB_STATE_MODS_LATCHED);
+    const uint32_t locked    = xkb_state_serialize_mods(xkb_state, (xkb_state_component)XKB_STATE_MODS_LOCKED);
+    const uint32_t grp       = xkb_state_serialize_group(xkb_state, (xkb_state_component)XKB_STATE_EFFECTIVE);
+
+    sendModifiersMaskToFocus(depressed, latched, locked, grp);
+#endif
+}
+
+void WebOSKeyboard::sendShortcutToFocus(uint evdevCode)
+{
+    Q_D(QWaylandKeyboard);
+
+#if QT_CONFIG(xkbcommon)
+    auto *xkb_state = d->xkbState();
+
+    if (!xkb_state) {
+        qWarning() << "No xkb state; cannot type a shortcut at the focused surface";
+        return;
+    }
+
+    auto *keymap = xkb_state_get_keymap(xkb_state);
+    const xkb_mod_index_t ctrl = xkb_keymap_mod_get_index(keymap, XKB_MOD_NAME_CTRL);
+
+    if (ctrl == XKB_MOD_INVALID) {
+        qWarning() << "Keymap has no Control modifier; cannot type a shortcut";
+        return;
+    }
+
+    const uint32_t ctrlMask = 1u << ctrl;
+    const uint ctrlKey = KEY_LEFTCTRL + 8;
+    const uint letter = evdevCode + 8;
+
+    sendModifiersMaskToFocus(ctrlMask, 0, 0, 0);
+    sendKeyEventToFocus(ctrlKey, WL_KEYBOARD_KEY_STATE_PRESSED);
+    sendKeyEventToFocus(letter, WL_KEYBOARD_KEY_STATE_PRESSED);
+    sendKeyEventToFocus(letter, WL_KEYBOARD_KEY_STATE_RELEASED);
+    sendKeyEventToFocus(ctrlKey, WL_KEYBOARD_KEY_STATE_RELEASED);
+    sendModifiersMaskToFocus(0, 0, 0, 0);
+#else
+    Q_UNUSED(evdevCode);
 #endif
 }
 
