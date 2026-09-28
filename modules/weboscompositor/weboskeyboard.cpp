@@ -219,7 +219,7 @@ void WebOSKeyboard::sendKeyEventToFocus(uint code, uint32_t state)
     }
 }
 
-void WebOSKeyboard::sendModifiersToFocus(uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t grp)
+void WebOSKeyboard::sendCurrentModifiersToFocus()
 {
     Q_D(QWaylandKeyboard);
 
@@ -227,6 +227,17 @@ void WebOSKeyboard::sendModifiersToFocus(uint32_t depressed, uint32_t latched, u
 
     if (!surface || !surface->client())
         return;
+
+#if QT_CONFIG(xkbcommon)
+    auto *xkb_state = d->xkbState();
+
+    if (!xkb_state)
+        return;
+
+    const uint32_t depressed = xkb_state_serialize_mods(xkb_state, (xkb_state_component)XKB_STATE_MODS_DEPRESSED);
+    const uint32_t latched   = xkb_state_serialize_mods(xkb_state, (xkb_state_component)XKB_STATE_MODS_LATCHED);
+    const uint32_t locked    = xkb_state_serialize_mods(xkb_state, (xkb_state_component)XKB_STATE_MODS_LOCKED);
+    const uint32_t grp       = xkb_state_serialize_group(xkb_state, (xkb_state_component)XKB_STATE_EFFECTIVE);
 
     // Addressed to the focused client's own keyboard resources, deliberately,
     // and not through the send_modifiers() overload that takes no resource.
@@ -241,6 +252,7 @@ void WebOSKeyboard::sendModifiersToFocus(uint32_t depressed, uint32_t latched, u
     const auto resources = d->resourceMap().values(surface->client()->client());
     for (auto *resource : resources)
         d->send_modifiers(resource->handle, serial, depressed, latched, locked, grp);
+#endif
 }
 
 

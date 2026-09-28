@@ -72,15 +72,26 @@ public:
      */
     void sendKeyEventToFocus(uint code, uint32_t state);
 
-    /*! \brief Push the modifier state to the focused surface past a grab.
+    /*! \brief Push our own modifier state to the focused surface past a grab.
      *
      * updateModifierState() sends modifiers to the grabber *instead of* the
      * client, so during a grab the focused client's own xkb state stays
      * empty. A key handed back by sendKeyEventToFocus() would then arrive
-     * unmodified - a plain 'c' where the user pressed Ctrl+C - which is why
-     * the input method has to restate the modifiers alongside it.
+     * unmodified - a plain 'c' where the user pressed Ctrl+C.
+     *
+     * Takes no mask, deliberately. The obvious thing is to relay the one the
+     * input method sends with input_method_context.modifiers, and it is wrong:
+     * that mask is indexed by the modifiers_map the input method declared
+     * (maliit's is Shift, Control, Alt, Logo, NumLock, making Control 0x2),
+     * while wl_keyboard.modifiers is indexed by the keymap the compositor
+     * handed the client, where 0x2 is Lock. Forwarded as-is it asserts
+     * CapsLock and no Control: Ctrl+C typed a capital C.
+     *
+     * Our own xkb state is authoritative, is already in the client's index
+     * space, and has been updated by updateModifierState() before the key
+     * comes back round - so it is the thing to send.
      */
-    void sendModifiersToFocus(uint32_t mods_depressed, uint32_t mods_latched, uint32_t mods_locked, uint32_t group);
+    void sendCurrentModifiersToFocus();
 
 private:
     void sendKeyEvent(uint code, uint32_t state);
