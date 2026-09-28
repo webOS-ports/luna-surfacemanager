@@ -207,6 +207,13 @@ void WaylandInputPanel::updateInputPanelRect(WebOSSurface *surface)
         if (lInputAreaRect.width() > largestWindowMask.width()) largestWindowMask = lInputAreaRect;
     }
 
+    // At info, because the application is resized around this rectangle and it
+    // is derived from the panel surface's window mask - a value set in another
+    // process, which nothing here can otherwise show. An application still
+    // overlapped by the panel is either not being told, or being told this.
+    qInfo() << "[inputPanel] mask" << newRegion << "-> rect" << largestWindowMask
+            << "state" << m_state;
+
     if (largestWindowMask.width()>0) {
         // consider that the first defined mask region is the input area
         setInputPanelRect(largestWindowMask);
@@ -258,10 +265,15 @@ void WaylandInputPanel::updateInputPanelState()
     qDebug() << "activeSurface:" << m_activeSurface << m_state << "->" << state;
 
     if (m_state != state) {
+        qInfo() << "[inputPanel] state" << m_state << "->" << state
+                << "rect" << m_rect << "valid" << m_rect.isValid();
         m_state = state;
         emit reportPanelState(m_state);
         if (m_state == InputPanelShown && m_rect.isValid())
             emit reportPanelRect(m_rect);
+    } else {
+        qInfo() << "[inputPanel] state unchanged at" << m_state
+                << "- nothing reported to the application";
     }
 }
 
@@ -270,7 +282,14 @@ void WaylandInputPanel::setInputPanelRect(const QRect& rect)
     if (m_rect != rect) {
         m_rect = rect;
         emit inputPanelRectChanged(m_rect);
-        if (m_state == InputPanelShown)
+        if (m_state == InputPanelShown) {
+            qInfo() << "[inputPanel] reporting rect" << m_rect << "to the application";
             emit reportPanelRect(m_rect);
+        } else {
+            qInfo() << "[inputPanel] rect is now" << m_rect
+                    << "but the panel is not shown, so nothing is reported";
+        }
+    } else {
+        qInfo() << "[inputPanel] rect unchanged at" << m_rect << "- nothing reported";
     }
 }
