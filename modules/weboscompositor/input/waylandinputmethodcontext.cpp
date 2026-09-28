@@ -252,25 +252,68 @@ void WaylandInputMethodContext::updateModifiers()
     }
 }
 
+//! The keyboard whose focused surface key() and modifiers() deliver to.
+WebOSKeyboard *WaylandInputMethodContext::focusKeyboard(WaylandInputMethodContext *that)
+{
+    if (!that || !that->m_inputMethod || !that->m_inputMethod->inputDevice())
+        return nullptr;
+
+    return static_cast<WebOSKeyboard *>(that->m_inputMethod->inputDevice()->keyboard());
+}
+
+/*! Handles input_method_context.key: a key the input method received through
+ * its keyboard grab and chose not to consume, handed back to be delivered to
+ * the application as an ordinary wl_keyboard.key.
+ *
+ * This used to do nothing, which left keysym() as the only way back and so
+ * made every keyboard shortcut depend on the client implementing
+ * text_model.keysym. Chromium does not act on a keysym that carries modifiers
+ * - Ctrl+C arrives and produces no key event at all - so Ctrl, Alt and Meta
+ * combinations reached no web application. A real key event needs no such
+ * cooperation: it is the same event the client would have received had no
+ * input method been running.
+ *
+ * \a key is a raw evdev code, as wl_keyboard.key carries it.
+ */
 void WaylandInputMethodContext::key(struct wl_client *client, struct wl_resource *resource, uint32_t serial, uint32_t time, uint32_t key, uint32_t state)
 {
     Q_UNUSED(client);
-    Q_UNUSED(resource);
     Q_UNUSED(serial);
     Q_UNUSED(time);
-    Q_UNUSED(key);
-    Q_UNUSED(state);
+
+    WaylandInputMethodContext* that = static_cast<WaylandInputMethodContext*>(resource->data);
+    WebOSKeyboard *keyboard = focusKeyboard(that);
+
+    if (!keyboard) {
+        qWarning() << "input_method_context.key with no keyboard to deliver it to";
+        return;
+    }
+
+    // Back to X-style, the form sendKeyEventToFocus() and the rest of
+    // QWaylandKeyboard's key API expect.
+    keyboard->sendKeyEventToFocus(key + 8, state);
 }
 
+/*! Handles input_method_context.modifiers: the modifier state to apply to the
+ * keys handed back by key().
+ *
+ * Needed for the same reason key() is. WebOSKeyboard::updateModifierState()
+ * sends modifiers to the grabber instead of the focused client, so while the
+ * input method holds the grab the client believes no modifier is down. Without
+ * this the key() above would deliver Ctrl+C as a bare 'c'.
+ */
 void WaylandInputMethodContext::modifiers(struct wl_client *client, struct wl_resource *resource, uint32_t serial, uint32_t mods_depressed, uint32_t mods_latched, uint32_t mods_locked, uint32_t group)
 {
     Q_UNUSED(client);
-    Q_UNUSED(resource);
     Q_UNUSED(serial);
-    Q_UNUSED(mods_depressed);
-    Q_UNUSED(mods_latched);
-    Q_UNUSED(mods_locked);
-    Q_UNUSED(group);
+
+    WaylandInputMethodContext* that = static_cast<WaylandInputMethodContext*>(resource->data);
+    WebOSKeyboard *keyboard = focusKeyboard(that);
+
+    if (!keyboard)
+        return;
+
+    keyboard->sendModifiersToFocus(mods_depressed, mods_latched, mods_locked, group);
 }
 
 WaylandInputMethodContext::~WaylandInputMethodContext()

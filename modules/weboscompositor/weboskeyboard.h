@@ -59,6 +59,29 @@ public:
     void endGrab();
     KeyboardGrabber *currentGrab() const;
 
+    /*! \brief Deliver a key to the focused surface past an active grab.
+     *
+     * An input method that has grabbed the keyboard receives every key, and
+     * the ones it does not consume it is expected to hand back through
+     * input_method_context.key. The grab is what makes that necessary: while
+     * it is held, sendKeyPressEvent() routes to the grabber and the focused
+     * client sees nothing at all, so there is no other way for a key the
+     * input method declined to reach the application.
+     *
+     * \a code is X-style, evdev + 8, matching sendKeyPressEvent().
+     */
+    void sendKeyEventToFocus(uint code, uint32_t state);
+
+    /*! \brief Push the modifier state to the focused surface past a grab.
+     *
+     * updateModifierState() sends modifiers to the grabber *instead of* the
+     * client, so during a grab the focused client's own xkb state stays
+     * empty. A key handed back by sendKeyEventToFocus() would then arrive
+     * unmodified - a plain 'c' where the user pressed Ctrl+C - which is why
+     * the input method has to restate the modifiers alongside it.
+     */
+    void sendModifiersToFocus(uint32_t mods_depressed, uint32_t mods_latched, uint32_t mods_locked, uint32_t group);
+
 private:
     void sendKeyEvent(uint code, uint32_t state);
     void pendingFocusDestroyed(void *data);

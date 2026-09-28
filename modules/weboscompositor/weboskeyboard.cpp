@@ -197,6 +197,37 @@ KeyboardGrabber *WebOSKeyboard::currentGrab() const
     return m_grab;
 }
 
+void WebOSKeyboard::sendKeyEventToFocus(uint code, uint32_t state)
+{
+    // Deliberately the base class and not our own override: the override
+    // exists to divert keys to the grabber, and this is the one caller that
+    // wants the opposite. QWaylandKeyboard subtracts the evdev offset itself.
+    if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+        QWaylandKeyboard::sendKeyPressEvent(code);
+#else
+        QWaylandKeyboard::sendKeyPressEvent(code, false);
+#endif
+    } else {
+#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+        QWaylandKeyboard::sendKeyReleaseEvent(code);
+#else
+        QWaylandKeyboard::sendKeyReleaseEvent(code, false);
+#endif
+    }
+}
+
+void WebOSKeyboard::sendModifiersToFocus(uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t grp)
+{
+    Q_D(QWaylandKeyboard);
+
+#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+    d->send_modifiers(compositor()->nextSerial(), depressed, latched, locked, grp);
+#else
+    d->modifiers(compositor()->nextSerial(), depressed, latched, locked, grp);
+#endif
+}
+
 
 void WebOSKeyboard::pendingFocusDestroyed(void *data)
 {
