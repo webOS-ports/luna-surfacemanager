@@ -182,6 +182,15 @@ void WaylandInputMethodContext::keySym(struct wl_client *client, struct wl_resou
 {
     Q_UNUSED(client);
     WaylandInputMethodContext* that = static_cast<WaylandInputMethodContext*>(resource->data);
+
+    // The input method handing a key back, for the application to act on. Said
+    // out loud because the other half of this - whether the application does
+    // anything with it - is invisible from here, and a shortcut that never
+    // arrives looks exactly like one that arrived and was ignored.
+    qInfo("[inputMethod] keysym 0x%x state=%u modifiers=0x%x -> %s",
+          sym, state, modifiers,
+          that->m_textModel ? "sent to the text model" : "DROPPED, no text model");
+
     if (that->m_textModel)
         that->m_textModel->keySym(serial, time, sym, state, modifiers);
 }
