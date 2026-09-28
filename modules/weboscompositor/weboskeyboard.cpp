@@ -17,6 +17,25 @@
 #include <QWaylandCompositor>
 #include <QtWaylandCompositor/private/qwaylandkeyboard_p.h>
 
+namespace {
+
+//! A positive integer from the environment, or \a fallback.
+//!
+//! Anything unparseable or negative is the fallback rather than an error: an
+//! empty or mistyped variable must not leave the keyboard unable to repeat.
+int envInt(const char *name, int fallback)
+{
+    bool ok = false;
+    const int value = qEnvironmentVariableIntValue(name, &ok);
+
+    if (!ok || value < 0)
+        return fallback;
+
+    return value;
+}
+
+} // namespace
+
 WebOSKeyboard::WebOSKeyboard(QWaylandSeat *seat)
     : QWaylandKeyboard(seat)
 {
@@ -24,8 +43,27 @@ WebOSKeyboard::WebOSKeyboard(QWaylandSeat *seat)
     connect(m_pendingFocusDestroyListener, &QWaylandDestroyListener::fired, this, &WebOSKeyboard::pendingFocusDestroyed);
 
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
-    // In webOS, auto repeat key events are supposed to be handled by input drivers.
-    setRepeatRate(0);
+    // Upstream set the rate to 0 here, on the policy that "auto repeat key events
+    // are supposed to be handled by input drivers" - the driver repeats, the
+    // compositor forwards. That does not survive contact with a Wayland client: a
+    // rate of 0 tells the client not to repeat, and the forwarded repeats are
+    // duplicate presses for a key the client already holds, which is not
+    // something the protocol describes and which clients therefore ignore.
+    // Measured on a Zinwa Q25 with a physical keyboard: thirteen kernel repeats
+    // of one held key produced exactly one character in the focused field, while
+    // five press/release pairs produced five. Every phone with a physical
+    // keyboard was unable to hold down backspace.
+    //
+    // So repeat is advertised and the client does it, which is what every other
+    // compositor does. WebOSSurfaceItem::processKeyEvent stops forwarding the
+    // kernel's own repeats to ordinary clients in exchange, or a held key would
+    // repeat twice over.
+    //
+    // Values are a compositor policy rather than the keyboard's own EVIOCGREP -
+    // Qt owns the evdev nodes here and the compositor never sees them - and are
+    // overridable for a device that wants to differ.
+    setRepeatDelay(envInt("WEBOS_KEYBOARD_REPEAT_DELAY", 400));
+    setRepeatRate(envInt("WEBOS_KEYBOARD_REPEAT_RATE", 25));
 #endif
 }
 

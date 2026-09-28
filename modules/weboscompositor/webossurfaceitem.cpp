@@ -738,12 +738,24 @@ void WebOSSurfaceItem::processKeyEvent(QKeyEvent *event)
     }
 
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
-    // Make "autoRepeat" to "false" so that the event is handled
-    // in QWaylandSeat::sendFullKeyEvent even when it was "true".
-    // It is the policy we have been using in webOS for a long time.
-    new (event) QKeyEvent(event->type(), event->key(), event->modifiers(),
-            event->nativeScanCode(), event->nativeVirtualKey(), event->nativeModifiers(),
-            event->text(), false /* autorep */);
+    if (event->isAutoRepeat()) {
+        // The client repeats for itself, from the rate WebOSKeyboard advertises.
+        // Forwarding the kernel's repeats as well would give a held key two
+        // sources at once, and a client ignores them anyway - they arrive as a
+        // press for a key it already holds.
+        if (!keyboard->currentGrab())
+            return;
+
+        // Except when the keyboard is grabbed, which is the input method holding
+        // it. It turns each press into a character itself and has no repeat timer,
+        // so the kernel's repeats are the only repeat it will ever see. The flag
+        // has to come off for QWaylandSeat::sendFullKeyEvent to pass the event on
+        // at all - which is the policy webOS has had here for a long time, now
+        // applied only where it is still needed.
+        new (event) QKeyEvent(event->type(), event->key(), event->modifiers(),
+                event->nativeScanCode(), event->nativeVirtualKey(), event->nativeModifiers(),
+                event->text(), false /* autorep */);
+    }
 #endif
 
     // General case
