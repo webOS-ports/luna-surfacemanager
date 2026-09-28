@@ -182,6 +182,15 @@ void WaylandInputMethodContext::keySym(struct wl_client *client, struct wl_resou
 {
     Q_UNUSED(client);
     WaylandInputMethodContext* that = static_cast<WaylandInputMethodContext*>(resource->data);
+
+    // The input method handing a key back, for the application to act on. Said
+    // out loud because the other half of this - whether the application does
+    // anything with it - is invisible from here, and a shortcut that never
+    // arrives looks exactly like one that arrived and was ignored.
+    qInfo("[inputMethod] keysym 0x%x state=%u modifiers=0x%x -> %s",
+          sym, state, modifiers,
+          that->m_textModel ? "sent to the text model" : "DROPPED, no text model");
+
     if (that->m_textModel)
         that->m_textModel->keySym(serial, time, sym, state, modifiers);
 }
@@ -243,25 +252,85 @@ void WaylandInputMethodContext::updateModifiers()
     }
 }
 
+//! The keyboard whose focused surface key() and modifiers() deliver to.
+WebOSKeyboard *WaylandInputMethodContext::focusKeyboard(WaylandInputMethodContext *that)
+{
+    if (!that || !that->m_inputMethod || !that->m_inputMethod->inputDevice())
+        return nullptr;
+
+    return static_cast<WebOSKeyboard *>(that->m_inputMethod->inputDevice()->keyboard());
+}
+
+/*! Handles input_method_context.key: a key the input method received through
+ * its keyboard grab and chose not to consume, handed back to be delivered to
+ * the application as an ordinary wl_keyboard.key.
+ *
+ * This used to do nothing, which left keysym() as the only way back and so
+ * made every keyboard shortcut depend on the client implementing
+ * text_model.keysym. Chromium does not act on a keysym that carries modifiers
+ * - Ctrl+C arrives and produces no key event at all - so Ctrl, Alt and Meta
+ * combinations reached no web application. A real key event needs no such
+ * cooperation: it is the same event the client would have received had no
+ * input method been running.
+ *
+ * \a key is a raw evdev code, as wl_keyboard.key carries it.
+ */
 void WaylandInputMethodContext::key(struct wl_client *client, struct wl_resource *resource, uint32_t serial, uint32_t time, uint32_t key, uint32_t state)
 {
     Q_UNUSED(client);
-    Q_UNUSED(resource);
     Q_UNUSED(serial);
     Q_UNUSED(time);
-    Q_UNUSED(key);
-    Q_UNUSED(state);
+
+    WaylandInputMethodContext* that = static_cast<WaylandInputMethodContext*>(resource->data);
+    WebOSKeyboard *keyboard = focusKeyboard(that);
+
+    if (!keyboard) {
+        qWarning() << "input_method_context.key with no keyboard to deliver it to";
+        return;
+    }
+
+    // Before the key, so the client has Ctrl down when the letter arrives.
+    // Done here rather than relying on the input method having sent
+    // input_method_context.modifiers first: the order of the two requests is
+    // the input method's choice, and the state is ours to know anyway.
+    keyboard->sendCurrentModifiersToFocus();
+
+    // Back to X-style, the form sendKeyEventToFocus() and the rest of
+    // QWaylandKeyboard's key API expect.
+    keyboard->sendKeyEventToFocus(key + 8, state);
 }
 
+/*! Handles input_method_context.modifiers: the input method telling us the
+ * modifier state to apply to the keys it hands back.
+ *
+ * Needed for the same reason key() is. WebOSKeyboard::updateModifierState()
+ * sends modifiers to the grabber instead of the focused client, so while the
+ * input method holds the grab the client believes no modifier is down, and the
+ * key() above would deliver Ctrl+C as a bare 'c'.
+ *
+ * The arguments are deliberately not passed on. They are indexed by the
+ * modifiers_map the input method declared - maliit's is Shift, Control, Alt,
+ * Logo, NumLock, so Control arrives as 0x2 - whereas wl_keyboard.modifiers is
+ * indexed by the keymap we gave the client, where 0x2 is Lock. Relaying the
+ * number asserted CapsLock and no Control, and Ctrl+C typed a capital C. Our
+ * own xkb state says the same thing in the units the client actually reads.
+ */
 void WaylandInputMethodContext::modifiers(struct wl_client *client, struct wl_resource *resource, uint32_t serial, uint32_t mods_depressed, uint32_t mods_latched, uint32_t mods_locked, uint32_t group)
 {
     Q_UNUSED(client);
-    Q_UNUSED(resource);
     Q_UNUSED(serial);
     Q_UNUSED(mods_depressed);
     Q_UNUSED(mods_latched);
     Q_UNUSED(mods_locked);
     Q_UNUSED(group);
+
+    WaylandInputMethodContext* that = static_cast<WaylandInputMethodContext*>(resource->data);
+    WebOSKeyboard *keyboard = focusKeyboard(that);
+
+    if (!keyboard)
+        return;
+
+    keyboard->sendCurrentModifiersToFocus();
 }
 
 WaylandInputMethodContext::~WaylandInputMethodContext()

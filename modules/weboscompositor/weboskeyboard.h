@@ -59,7 +59,59 @@ public:
     void endGrab();
     KeyboardGrabber *currentGrab() const;
 
+    /*! \brief Deliver a key to the focused surface past an active grab.
+     *
+     * An input method that has grabbed the keyboard receives every key, and
+     * the ones it does not consume it is expected to hand back through
+     * input_method_context.key. The grab is what makes that necessary: while
+     * it is held, sendKeyPressEvent() routes to the grabber and the focused
+     * client sees nothing at all, so there is no other way for a key the
+     * input method declined to reach the application.
+     *
+     * \a code is X-style, evdev + 8, matching sendKeyPressEvent().
+     */
+    void sendKeyEventToFocus(uint code, uint32_t state);
+
+    /*! \brief Push our own modifier state to the focused surface past a grab.
+     *
+     * updateModifierState() sends modifiers to the grabber *instead of* the
+     * client, so during a grab the focused client's own xkb state stays
+     * empty. A key handed back by sendKeyEventToFocus() would then arrive
+     * unmodified - a plain 'c' where the user pressed Ctrl+C.
+     *
+     * Takes no mask, deliberately. The obvious thing is to relay the one the
+     * input method sends with input_method_context.modifiers, and it is wrong:
+     * that mask is indexed by the modifiers_map the input method declared
+     * (maliit's is Shift, Control, Alt, Logo, NumLock, making Control 0x2),
+     * while wl_keyboard.modifiers is indexed by the keymap the compositor
+     * handed the client, where 0x2 is Lock. Forwarded as-is it asserts
+     * CapsLock and no Control: Ctrl+C typed a capital C.
+     *
+     * Our own xkb state is authoritative, is already in the client's index
+     * space, and has been updated by updateModifierState() before the key
+     * comes back round - so it is the thing to send.
+     */
+    void sendCurrentModifiersToFocus();
+
+    /*! \brief Type a Ctrl shortcut at the focused surface.
+     *
+     * For the shell's edit overlay: Cut, Copy, Paste and Select All are just
+     * Ctrl+X/C/V/A, and every client already knows what to do with those, so
+     * the overlay needs no per-toolkit command channel and no new API in the
+     * web runtime - it types the shortcut the user would have typed.
+     *
+     * The modifier mask is built from the keymap rather than taken from our
+     * xkb state, because nothing is physically held down: this is a synthetic
+     * shortcut. The real Ctrl key events are sent as well as the mask, since
+     * clients are split on which they believe - Chromium derives the state
+     * from the key events, Qt reads only wl_keyboard.modifiers.
+     *
+     * \a evdevCode is the raw evdev code of the letter, e.g. KEY_C.
+     */
+    void sendShortcutToFocus(uint evdevCode);
+
 private:
+    void sendModifiersMaskToFocus(uint32_t mods_depressed, uint32_t mods_latched, uint32_t mods_locked, uint32_t group);
     void sendKeyEvent(uint code, uint32_t state);
     void pendingFocusDestroyed(void *data);
 

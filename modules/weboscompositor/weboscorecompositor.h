@@ -146,6 +146,17 @@ public:
     void setCursorVisible(bool visibility);
     Q_INVOKABLE void updateCursorFocus();
 
+    /*! \brief Perform an editing command on the focused surface.
+     *
+     * For the shell's edit overlay. \a command is "cut", "copy", "paste" or
+     * "selectAll", and each is carried out by typing its Ctrl shortcut at the
+     * focused surface - the same events the user would produce from the
+     * keyboard. That is deliberately all it is: every toolkit already
+     * implements these shortcuts, so the overlay works in web applications,
+     * QML and anything else without a command channel per client.
+     */
+    Q_INVOKABLE void sendEditCommand(const QString &command);
+
     void applySurfaceItemClosePolicy(QString reason, const QString &targetAppId);
 
     QVariantMap surfaceItemClosePolicy() { return m_surfaceItemClosePolicy; }

@@ -9,6 +9,7 @@
         "batteryd.management",
         "boot.query",
         "database.operation",
+        "display.operation",
         "luna-sysmgr.operation",
         "networkconnection.query",
         "networkconnection.management",

@@ -120,6 +120,9 @@ private:
     void cleanup();
     void releaseGrab();
 
+    //! The keyboard whose focused surface key() and modifiers() deliver to.
+    static WebOSKeyboard *focusKeyboard(WaylandInputMethodContext *that);
+
     void grabKeyboardImpl();
     void releaseGrabImpl();
 

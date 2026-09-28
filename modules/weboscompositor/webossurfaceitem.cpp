@@ -738,12 +738,24 @@ void WebOSSurfaceItem::processKeyEvent(QKeyEvent *event)
     }
 
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
-    // Make "autoRepeat" to "false" so that the event is handled
-    // in QWaylandSeat::sendFullKeyEvent even when it was "true".
-    // It is the policy we have been using in webOS for a long time.
-    new (event) QKeyEvent(event->type(), event->key(), event->modifiers(),
-            event->nativeScanCode(), event->nativeVirtualKey(), event->nativeModifiers(),
-            event->text(), false /* autorep */);
+    if (event->isAutoRepeat()) {
+        // The client repeats for itself, from the rate WebOSKeyboard advertises.
+        // Forwarding the kernel's repeats as well would give a held key two
+        // sources at once, and a client ignores them anyway - they arrive as a
+        // press for a key it already holds.
+        if (!keyboard->currentGrab())
+            return;
+
+        // Except when the keyboard is grabbed, which is the input method holding
+        // it. It turns each press into a character itself and has no repeat timer,
+        // so the kernel's repeats are the only repeat it will ever see. The flag
+        // has to come off for QWaylandSeat::sendFullKeyEvent to pass the event on
+        // at all - which is the policy webOS has had here for a long time, now
+        // applied only where it is still needed.
+        new (event) QKeyEvent(event->type(), event->key(), event->modifiers(),
+                event->nativeScanCode(), event->nativeVirtualKey(), event->nativeModifiers(),
+                event->text(), false /* autorep */);
+    }
 #endif
 
     // General case
@@ -832,11 +844,28 @@ void WebOSSurfaceItem::focusInEvent(QFocusEvent *event)
 
 void WebOSSurfaceItem::focusOutEvent(QFocusEvent *event)
 {
+    // The shell taking Qt focus for something of its own is not the application
+    // losing the keyboard. A transient overlay - the system menu - is not a
+    // Wayland client and has nobody to give keyboard focus to, so clearing it
+    // only tells the focused application that its keyboard went away: the client
+    // gets wl_keyboard.leave, blurs the field it had focused, and deactivates its
+    // text input. Measured consequence: opening the system menu to reach the
+    // on-screen keyboard toggle took input focus off the field first, so the
+    // toggle had nothing to put a panel up for and appeared to do nothing at all.
+    //
+    // keepInputActive is the shell saying it has rearranged itself rather than
+    // handed the keyboard somewhere else, and it already suppresses the input
+    // method teardown in setFullscreen() for the same reason. It is off by
+    // default and deliberately not inferred: the lock screen and Just Type take
+    // Qt focus because they want the keys themselves, and for those the
+    // application must lose the keyboard.
+    const bool keepFocus = m_compositor && m_compositor->keepInputActive();
+
 #ifdef MULTIINPUT_SUPPORT
     //Reset Keybaord/Pointer focus
     foreach (QWaylandSeat *dev, m_compositor->inputDevices()) {
         if (dev) {
-            if (dev->keyboardFocus() == surface())
+            if (!keepFocus && dev->keyboardFocus() == surface())
                 dev->setKeyboardFocus(0);
             if (surface() && !surface()->views().isEmpty()
                 && dev->mouseFocus() == surface()->views().first())
@@ -846,7 +875,7 @@ void WebOSSurfaceItem::focusOutEvent(QFocusEvent *event)
 #else
     QWaylandSeat *keyboardDevice = getInputDevice();
     QWaylandSeat *mouseDevice = m_compositor->defaultSeat();
-    if (keyboardDevice->keyboardFocus() == surface())
+    if (!keepFocus && keyboardDevice->keyboardFocus() == surface())
         keyboardDevice->setKeyboardFocus(0);
     if (surface() && mouseDevice->mouseFocus() == surface()->views().first())
         mouseDevice->setMouseFocus(nullptr);
