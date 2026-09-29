@@ -313,10 +313,29 @@ void WebOSKeyboard::sendShortcutToFocus(uint evdevCode)
      */
     Q_UNUSED(ctrlMask);
 
+    /*
+     * The modifier state is updated around the letter, not merely asserted.
+     *
+     * A key that comes back from the input method is delivered with the
+     * compositor's own xkb state, because that is the one counted in the
+     * client's index space -- see the input method context. A real Ctrl+C
+     * leaves Control down in that state, since Qt updates it for every key it
+     * processes. Keys put into the grab from here are not processed that way,
+     * so without this the state still said nothing was held: the letter went
+     * back to the application as a bare letter, and it typed a c over the
+     * selection instead of copying it, and a v instead of pasting.
+     *
+     * updateModifierState() tells the grab about the change as well, so the
+     * input method sees Control held for the same reason the application does.
+     */
+    updateModifierState(ctrlKey, WL_KEYBOARD_KEY_STATE_PRESSED, false);
     sendKeyEvent(ctrlKey, WL_KEYBOARD_KEY_STATE_PRESSED);
+
     sendKeyEvent(letter, WL_KEYBOARD_KEY_STATE_PRESSED);
     sendKeyEvent(letter, WL_KEYBOARD_KEY_STATE_RELEASED);
+
     sendKeyEvent(ctrlKey, WL_KEYBOARD_KEY_STATE_RELEASED);
+    updateModifierState(ctrlKey, WL_KEYBOARD_KEY_STATE_RELEASED, false);
 #else
     Q_UNUSED(evdevCode);
 #endif
