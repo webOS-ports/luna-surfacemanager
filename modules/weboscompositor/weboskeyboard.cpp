@@ -18,6 +18,8 @@
 #include <QWaylandClient>
 #include <QWaylandSurface>
 #include <QtWaylandCompositor/private/qwaylandkeyboard_p.h>
+#include <QPointer>
+#include <QTimer>
 
 #include <linux/input.h>
 
@@ -289,12 +291,82 @@ void WebOSKeyboard::sendShortcutToFocus(uint evdevCode)
     const uint ctrlKey = KEY_LEFTCTRL + 8;
     const uint letter = evdevCode + 8;
 
-    sendModifiersMaskToFocus(ctrlMask, 0, 0, 0);
-    sendKeyEventToFocus(ctrlKey, WL_KEYBOARD_KEY_STATE_PRESSED);
-    sendKeyEventToFocus(letter, WL_KEYBOARD_KEY_STATE_PRESSED);
-    sendKeyEventToFocus(letter, WL_KEYBOARD_KEY_STATE_RELEASED);
-    sendKeyEventToFocus(ctrlKey, WL_KEYBOARD_KEY_STATE_RELEASED);
-    sendModifiersMaskToFocus(0, 0, 0, 0);
+    /*
+     * Through the grab, the way a real key goes.
+     *
+     * Sent straight at the focused surface instead, the letter never arrived:
+     * measured in the page, a Ctrl+C typed this way delivered the Control key
+     * and nothing else. With a text input active the client routes character
+     * keys through the input method and waits for text to be committed, so a
+     * letter that the input method never saw is dropped on the floor -- while
+     * modifiers, which are never filtered that way, went through and made it
+     * look as though the shortcut had been sent.
+     *
+     * The grab is what an input method is holding, and what it hands back
+     * arrives at the client as a key the input method did not consume, which is
+     * the whole point of input_method_context.key. A real Ctrl+C on the
+     * hardware keyboard takes exactly that route and works, so this one takes
+     * it too. With no input method attached the default grab delivers to the
+     * focused surface anyway, so nothing is lost when there is nothing to grab.
+     *
+     * The modifier mask comes with it: the grab keeps its own xkb state from
+     * the keys it is given, so Control being held is worked out from the key
+     * rather than asserted separately.
+     */
+    Q_UNUSED(ctrlMask);
+
+    /*
+     * The modifier state is updated around the letter, not merely asserted.
+     *
+     * A key that comes back from the input method is delivered with the
+     * compositor's own xkb state, because that is the one counted in the
+     * client's index space -- see the input method context. A real Ctrl+C
+     * leaves Control down in that state, since Qt updates it for every key it
+     * processes. Keys put into the grab from here are not processed that way,
+     * so without this the state still said nothing was held: the letter went
+     * back to the application as a bare letter, and it typed a c over the
+     * selection instead of copying it, and a v instead of pasting.
+     *
+     * updateModifierState() tells the grab about the change as well, so the
+     * input method sees Control held for the same reason the application does.
+     */
+    updateModifierState(ctrlKey, WL_KEYBOARD_KEY_STATE_PRESSED, false);
+    sendKeyEvent(ctrlKey, WL_KEYBOARD_KEY_STATE_PRESSED);
+
+    /*
+     * Typed at the pace of a finger, not all in one breath.
+     *
+     * Every event above went out inside the same millisecond, sharing a
+     * timestamp, and the letter was handed back to an application that had not
+     * yet made anything of the Control key in front of it. A key on a real
+     * keyboard is held for a tenth of a second or so, and the round trip
+     * through the input method happens while it is still down - which is the
+     * state the application reads when it decides whether it has been given a
+     * shortcut or a character.
+     *
+     * So the sequence is spread out: press Control, let the client see it, then
+     * the letter, then let go. Slow by the standards of a program, immediate by
+     * the standards of the hand it is imitating.
+     */
+    QPointer<WebOSKeyboard> self(this);
+
+    QTimer::singleShot(kShortcutLetterDelayMs, this, [self, letter]() {
+        if (self)
+            self->sendKeyEvent(letter, WL_KEYBOARD_KEY_STATE_PRESSED);
+    });
+
+    QTimer::singleShot(kShortcutLetterDelayMs * 2, this, [self, letter]() {
+        if (self)
+            self->sendKeyEvent(letter, WL_KEYBOARD_KEY_STATE_RELEASED);
+    });
+
+    QTimer::singleShot(kShortcutModifierHoldMs, this, [self, ctrlKey]() {
+        if (!self)
+            return;
+
+        self->sendKeyEvent(ctrlKey, WL_KEYBOARD_KEY_STATE_RELEASED);
+        self->updateModifierState(ctrlKey, WL_KEYBOARD_KEY_STATE_RELEASED, false);
+    });
 #else
     Q_UNUSED(evdevCode);
 #endif

@@ -108,6 +108,17 @@ public:
      *
      * \a evdevCode is the raw evdev code of the letter, e.g. KEY_C.
      */
+    //! How long the synthetic Control is held while the letter it belongs to
+    //! makes its round trip through the input method. Long enough for another
+    //! process to answer, short enough that nothing else can be typed into it.
+    static constexpr int kShortcutModifierHoldMs = 220;
+
+    //! How long after Control the letter follows, and how long it is held. A
+    //! hand types a shortcut over a tenth of a second; this does the same,
+    //! because the application decides what it has been given from the state
+    //! it can see at the time.
+    static constexpr int kShortcutLetterDelayMs = 60;
+
     void sendShortcutToFocus(uint evdevCode);
 
 private:

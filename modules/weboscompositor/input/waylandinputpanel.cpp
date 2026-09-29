@@ -211,8 +211,8 @@ void WaylandInputPanel::updateInputPanelRect(WebOSSurface *surface)
     // is derived from the panel surface's window mask - a value set in another
     // process, which nothing here can otherwise show. An application still
     // overlapped by the panel is either not being told, or being told this.
-    qDebug() << "[inputPanel] mask" << newRegion << "-> rect" << largestWindowMask
-             << "state" << m_state;
+    qInfo() << "[inputPanel] mask" << newRegion << "-> rect" << largestWindowMask
+            << "state" << m_state;
 
     if (largestWindowMask.width()>0) {
         // consider that the first defined mask region is the input area
