@@ -18,6 +18,8 @@
 #include <QWaylandClient>
 #include <QWaylandSurface>
 #include <QtWaylandCompositor/private/qwaylandkeyboard_p.h>
+#include <QPointer>
+#include <QTimer>
 
 #include <linux/input.h>
 
@@ -334,8 +336,28 @@ void WebOSKeyboard::sendShortcutToFocus(uint evdevCode)
     sendKeyEvent(letter, WL_KEYBOARD_KEY_STATE_PRESSED);
     sendKeyEvent(letter, WL_KEYBOARD_KEY_STATE_RELEASED);
 
-    sendKeyEvent(ctrlKey, WL_KEYBOARD_KEY_STATE_RELEASED);
-    updateModifierState(ctrlKey, WL_KEYBOARD_KEY_STATE_RELEASED, false);
+    /*
+     * Control is let go later, because the letter has not come back yet.
+     *
+     * The input method is another process: the keys above are on their way to
+     * it, and the letter only reaches the application once it has looked at it
+     * and handed it back, which is when the modifier state is read for what to
+     * deliver alongside it. Releasing Control here, in the same breath as
+     * pressing it, meant the state said nothing was held by the time the letter
+     * returned - so Copy typed a c over the selection and Paste typed a v,
+     * while the input method's own log showed it had recognised Ctrl+C
+     * perfectly well. A finger on a real keyboard is still holding the key
+     * throughout that round trip; this is how long it holds it for.
+     */
+    QPointer<WebOSKeyboard> self(this);
+
+    QTimer::singleShot(kShortcutModifierHoldMs, this, [self, ctrlKey]() {
+        if (!self)
+            return;
+
+        self->sendKeyEvent(ctrlKey, WL_KEYBOARD_KEY_STATE_RELEASED);
+        self->updateModifierState(ctrlKey, WL_KEYBOARD_KEY_STATE_RELEASED, false);
+    });
 #else
     Q_UNUSED(evdevCode);
 #endif
