@@ -119,10 +119,6 @@ public:
     //! it can see at the time.
     static constexpr int kShortcutLetterDelayMs = 60;
 
-    //! What the client is told is held, for diagnosing a shortcut that does
-    //! not arrive as one.
-    uint32_t currentModsDepressed() const { return modsDepressed; }
-
     void sendShortcutToFocus(uint evdevCode);
 
 private:
