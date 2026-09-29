@@ -289,12 +289,34 @@ void WebOSKeyboard::sendShortcutToFocus(uint evdevCode)
     const uint ctrlKey = KEY_LEFTCTRL + 8;
     const uint letter = evdevCode + 8;
 
-    sendModifiersMaskToFocus(ctrlMask, 0, 0, 0);
-    sendKeyEventToFocus(ctrlKey, WL_KEYBOARD_KEY_STATE_PRESSED);
-    sendKeyEventToFocus(letter, WL_KEYBOARD_KEY_STATE_PRESSED);
-    sendKeyEventToFocus(letter, WL_KEYBOARD_KEY_STATE_RELEASED);
-    sendKeyEventToFocus(ctrlKey, WL_KEYBOARD_KEY_STATE_RELEASED);
-    sendModifiersMaskToFocus(0, 0, 0, 0);
+    /*
+     * Through the grab, the way a real key goes.
+     *
+     * Sent straight at the focused surface instead, the letter never arrived:
+     * measured in the page, a Ctrl+C typed this way delivered the Control key
+     * and nothing else. With a text input active the client routes character
+     * keys through the input method and waits for text to be committed, so a
+     * letter that the input method never saw is dropped on the floor -- while
+     * modifiers, which are never filtered that way, went through and made it
+     * look as though the shortcut had been sent.
+     *
+     * The grab is what an input method is holding, and what it hands back
+     * arrives at the client as a key the input method did not consume, which is
+     * the whole point of input_method_context.key. A real Ctrl+C on the
+     * hardware keyboard takes exactly that route and works, so this one takes
+     * it too. With no input method attached the default grab delivers to the
+     * focused surface anyway, so nothing is lost when there is nothing to grab.
+     *
+     * The modifier mask comes with it: the grab keeps its own xkb state from
+     * the keys it is given, so Control being held is worked out from the key
+     * rather than asserted separately.
+     */
+    Q_UNUSED(ctrlMask);
+
+    sendKeyEvent(ctrlKey, WL_KEYBOARD_KEY_STATE_PRESSED);
+    sendKeyEvent(letter, WL_KEYBOARD_KEY_STATE_PRESSED);
+    sendKeyEvent(letter, WL_KEYBOARD_KEY_STATE_RELEASED);
+    sendKeyEvent(ctrlKey, WL_KEYBOARD_KEY_STATE_RELEASED);
 #else
     Q_UNUSED(evdevCode);
 #endif
