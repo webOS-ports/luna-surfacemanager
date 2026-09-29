@@ -333,23 +333,32 @@ void WebOSKeyboard::sendShortcutToFocus(uint evdevCode)
     updateModifierState(ctrlKey, WL_KEYBOARD_KEY_STATE_PRESSED, false);
     sendKeyEvent(ctrlKey, WL_KEYBOARD_KEY_STATE_PRESSED);
 
-    sendKeyEvent(letter, WL_KEYBOARD_KEY_STATE_PRESSED);
-    sendKeyEvent(letter, WL_KEYBOARD_KEY_STATE_RELEASED);
-
     /*
-     * Control is let go later, because the letter has not come back yet.
+     * Typed at the pace of a finger, not all in one breath.
      *
-     * The input method is another process: the keys above are on their way to
-     * it, and the letter only reaches the application once it has looked at it
-     * and handed it back, which is when the modifier state is read for what to
-     * deliver alongside it. Releasing Control here, in the same breath as
-     * pressing it, meant the state said nothing was held by the time the letter
-     * returned - so Copy typed a c over the selection and Paste typed a v,
-     * while the input method's own log showed it had recognised Ctrl+C
-     * perfectly well. A finger on a real keyboard is still holding the key
-     * throughout that round trip; this is how long it holds it for.
+     * Every event above went out inside the same millisecond, sharing a
+     * timestamp, and the letter was handed back to an application that had not
+     * yet made anything of the Control key in front of it. A key on a real
+     * keyboard is held for a tenth of a second or so, and the round trip
+     * through the input method happens while it is still down - which is the
+     * state the application reads when it decides whether it has been given a
+     * shortcut or a character.
+     *
+     * So the sequence is spread out: press Control, let the client see it, then
+     * the letter, then let go. Slow by the standards of a program, immediate by
+     * the standards of the hand it is imitating.
      */
     QPointer<WebOSKeyboard> self(this);
+
+    QTimer::singleShot(kShortcutLetterDelayMs, this, [self, letter]() {
+        if (self)
+            self->sendKeyEvent(letter, WL_KEYBOARD_KEY_STATE_PRESSED);
+    });
+
+    QTimer::singleShot(kShortcutLetterDelayMs * 2, this, [self, letter]() {
+        if (self)
+            self->sendKeyEvent(letter, WL_KEYBOARD_KEY_STATE_RELEASED);
+    });
 
     QTimer::singleShot(kShortcutModifierHoldMs, this, [self, ctrlKey]() {
         if (!self)
