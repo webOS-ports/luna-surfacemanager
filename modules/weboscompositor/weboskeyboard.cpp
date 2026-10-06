@@ -386,5 +386,13 @@ void WebOSKeyboard::sendKeyEvent(uint code, uint32_t state)
     uint32_t time = compositor()->currentTimeMsecs();
     uint32_t serial = compositor()->nextSerial();
     uint key = code - 8;
+
+    // No input method attached - Just Type is one such place - means no grab
+    // to put the key through; the focused surface is where it was going anyway.
+    if (!m_grab) {
+        sendKeyEventToFocus(code, state);
+        return;
+    }
+
     m_grab->key(serial, time, key, state);
 }
