@@ -24,6 +24,8 @@
 #include <QtWaylandCompositor/qwaylandqtwindowmanager.h>
 
 #include <QDebug>
+#include <QMimeData>
+#include <QTimer>
 #include <QQuickWindow>
 #include <QCoreApplication>
 #include <QFileInfo>
@@ -254,6 +256,12 @@ WebOSCoreCompositor::WebOSCoreCompositor(ExtensionFlags extensions, const char *
     , m_extensionFlags(extensions)
 {
     setSocketName(socketName);
+
+    // Asks Qt to read the pasteboard's contents whenever a client sets it, so
+    // retainedSelectionReceived() can say whether there is text on it. A side
+    // effect worth having: what was copied outlives the application it came from,
+    // as it did on legacy webOS.
+    setRetainedSelectionEnabled(true);
 
     connect(this, &QWaylandCompositor::surfaceRequested, this, [this] (QWaylandClient *client, uint id, int version) {
         WebOSSurface *surface = new WebOSSurface();
@@ -1487,6 +1495,29 @@ void WebOSCoreCompositor::sendEditCommand(const QString &command)
         {QStringLiteral("selectAll"), KEY_A},
     };
 
+    // Select the word at the caret, which is what legacy's "Select" did and for
+    // which no application has a shortcut of its own: go back to the start of the
+    // word, then select forward to its end. Two chords, the second once the first
+    // has been let go of.
+    if (command == QLatin1String("selectWord")) {
+        auto *wordKeyboard = static_cast<WebOSKeyboard *>(defaultSeat()->keyboard());
+
+        if (!wordKeyboard) {
+            qWarning() << "No keyboard to select a word with";
+            return;
+        }
+
+        wordKeyboard->sendShortcutToFocus(KEY_LEFT);
+
+        QPointer<WebOSKeyboard> self(wordKeyboard);
+        QTimer::singleShot(WebOSKeyboard::kShortcutModifierHoldMs + 2 * WebOSKeyboard::kShortcutLetterDelayMs,
+                           wordKeyboard, [self]() {
+            if (self)
+                self->sendShortcutToFocus(KEY_RIGHT, true);
+        });
+        return;
+    }
+
     const auto it = commands.constFind(command);
 
     if (it == commands.constEnd()) {
@@ -1502,6 +1533,38 @@ void WebOSCoreCompositor::sendEditCommand(const QString &command)
     }
 
     keyboard->sendShortcutToFocus(it.value());
+}
+
+void WebOSCoreCompositor::retainedSelectionReceived(QMimeData *mimeData)
+{
+    QWaylandCompositor::retainedSelectionReceived(mimeData);
+
+    // Any flavour of text counts, and it has to have something in it: a client
+    // offers "text/plain;charset=utf-8" far more often than the bare
+    // "text/plain" that QMimeData::hasText() looks for. Legacy's Paste asked for
+    // the pasteboard's plain text and wanted it non-empty.
+    bool hasText = false;
+
+    if (mimeData) {
+        const QStringList formats = mimeData->formats();
+
+        for (const QString &format : formats) {
+            const bool isText = format.startsWith(QLatin1String("text/plain"))
+                                || format == QLatin1String("UTF8_STRING")
+                                || format == QLatin1String("STRING")
+                                || format == QLatin1String("TEXT");
+
+            if (isText && !mimeData->data(format).isEmpty()) {
+                hasText = true;
+                break;
+            }
+        }
+    }
+
+    if (m_clipboardHasText != hasText) {
+        m_clipboardHasText = hasText;
+        emit clipboardHasTextChanged();
+    }
 }
 
 void WebOSCoreCompositor::updateCursorFocus()
