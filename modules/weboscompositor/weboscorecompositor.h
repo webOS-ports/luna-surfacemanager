@@ -95,6 +95,9 @@ class WEBOS_COMPOSITOR_EXPORT WebOSCoreCompositor : public QWaylandCompositor
     Q_PROPERTY(bool respawned READ respawned NOTIFY respawnedChanged)
 
     Q_PROPERTY(bool keepInputActive READ keepInputActive WRITE setKeepInputActive NOTIFY keepInputActiveChanged)
+    //! Whether the pasteboard holds text. Legacy's Paste item was only offered when
+    //! it did, and the shell's edit overlay asks the same question.
+    Q_PROPERTY(bool clipboardHasText READ clipboardHasText NOTIFY clipboardHasTextChanged)
 
 public:
     enum ExtensionFlag {
@@ -148,12 +151,13 @@ public:
 
     /*! \brief Perform an editing command on the focused surface.
      *
-     * For the shell's edit overlay. \a command is "cut", "copy", "paste" or
-     * "selectAll", and each is carried out by typing its Ctrl shortcut at the
-     * focused surface - the same events the user would produce from the
-     * keyboard. That is deliberately all it is: every toolkit already
-     * implements these shortcuts, so the overlay works in web applications,
-     * QML and anything else without a command channel per client.
+     * For the shell's edit overlay. \a command is "cut", "copy", "paste",
+     * "selectAll" or "selectWord" (the word at the caret), and each is carried
+     * out by typing its shortcut at the focused surface - the same events the
+     * user would produce from the keyboard. That is deliberately all it is:
+     * every toolkit already implements these shortcuts, so the overlay works in
+     * web applications, QML and anything else without a command channel per
+     * client.
      */
     Q_INVOKABLE void sendEditCommand(const QString &command);
 
@@ -174,6 +178,7 @@ public:
     void setMouseEventEnabled(bool enable);
 
     bool keepInputActive() { return m_keepInputActive; }
+    bool clipboardHasText() const { return m_clipboardHasText; }
     void setKeepInputActive(bool enable);
 
 #ifdef MULTIINPUT_SUPPORT
@@ -275,6 +280,7 @@ signals:
     void surfaceItemClosePolicyChanged();
 
     void keepInputActiveChanged();
+    void clipboardHasTextChanged();
 
     //Unix signals to QT signals;
     void reloadConfig(); //SIGHUP
@@ -295,6 +301,10 @@ signals:
 
 protected:
     virtual void surfaceCreated(QWaylandSurface *surface);
+
+    //! Called with the whole of the pasteboard each time a client sets it, which
+    //! is the one public way Qt Wayland has of showing a compositor what is on it.
+    void retainedSelectionReceived(QMimeData *mimeData) override;
 
     virtual QWaylandSeat *createSeat() override;
     virtual QWaylandPointer *createPointerDevice(QWaylandSeat *seat) override;
@@ -359,6 +369,7 @@ private:
     bool m_cursorVisible; // deprecated
     bool m_mouseEventEnabled;
     bool m_keepInputActive;
+    bool m_clipboardHasText = false;
 
     WebOSShell* m_shell;
     WebOSInputManager *m_inputManager;

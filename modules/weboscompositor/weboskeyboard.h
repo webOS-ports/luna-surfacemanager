@@ -119,7 +119,8 @@ public:
     //! it can see at the time.
     static constexpr int kShortcutLetterDelayMs = 60;
 
-    void sendShortcutToFocus(uint evdevCode);
+    //! Types Ctrl+key at the focused surface, with Shift held too when asked.
+    void sendShortcutToFocus(uint evdevCode, bool withShift = false);
 
 private:
     void sendModifiersMaskToFocus(uint32_t mods_depressed, uint32_t mods_latched, uint32_t mods_locked, uint32_t group);

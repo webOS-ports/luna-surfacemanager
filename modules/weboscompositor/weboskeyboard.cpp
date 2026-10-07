@@ -267,7 +267,7 @@ void WebOSKeyboard::sendCurrentModifiersToFocus()
 #endif
 }
 
-void WebOSKeyboard::sendShortcutToFocus(uint evdevCode)
+void WebOSKeyboard::sendShortcutToFocus(uint evdevCode, bool withShift)
 {
     Q_D(QWaylandKeyboard);
 
@@ -333,6 +333,14 @@ void WebOSKeyboard::sendShortcutToFocus(uint evdevCode)
     updateModifierState(ctrlKey, WL_KEYBOARD_KEY_STATE_PRESSED, false);
     sendKeyEvent(ctrlKey, WL_KEYBOARD_KEY_STATE_PRESSED);
 
+    // Shift goes down with Control and comes up with it, for the shortcuts that
+    // extend a selection rather than move the caret.
+    const uint shiftKey = KEY_LEFTSHIFT + 8;
+    if (withShift) {
+        updateModifierState(shiftKey, WL_KEYBOARD_KEY_STATE_PRESSED, false);
+        sendKeyEvent(shiftKey, WL_KEYBOARD_KEY_STATE_PRESSED);
+    }
+
     /*
      * Typed at the pace of a finger, not all in one breath.
      *
@@ -360,9 +368,14 @@ void WebOSKeyboard::sendShortcutToFocus(uint evdevCode)
             self->sendKeyEvent(letter, WL_KEYBOARD_KEY_STATE_RELEASED);
     });
 
-    QTimer::singleShot(kShortcutModifierHoldMs, this, [self, ctrlKey]() {
+    QTimer::singleShot(kShortcutModifierHoldMs, this, [self, ctrlKey, shiftKey, withShift]() {
         if (!self)
             return;
+
+        if (withShift) {
+            self->sendKeyEvent(shiftKey, WL_KEYBOARD_KEY_STATE_RELEASED);
+            self->updateModifierState(shiftKey, WL_KEYBOARD_KEY_STATE_RELEASED, false);
+        }
 
         self->sendKeyEvent(ctrlKey, WL_KEYBOARD_KEY_STATE_RELEASED);
         self->updateModifierState(ctrlKey, WL_KEYBOARD_KEY_STATE_RELEASED, false);
@@ -386,5 +399,13 @@ void WebOSKeyboard::sendKeyEvent(uint code, uint32_t state)
     uint32_t time = compositor()->currentTimeMsecs();
     uint32_t serial = compositor()->nextSerial();
     uint key = code - 8;
+
+    // No input method attached - Just Type is one such place - means no grab
+    // to put the key through; the focused surface is where it was going anyway.
+    if (!m_grab) {
+        sendKeyEventToFocus(code, state);
+        return;
+    }
+
     m_grab->key(serial, time, key, state);
 }
