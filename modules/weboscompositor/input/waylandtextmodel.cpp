@@ -137,6 +137,11 @@ void WaylandTextModel::textModelSetSurroundingText(struct wl_client *client, str
 
 }
 
+WebOSSurfaceItem *WaylandTextModel::surfaceItem() const
+{
+    return m_surfaceItem.data();
+}
+
 void WaylandTextModel::setInputMethod(WaylandInputMethod *method, WebOSSurfaceItem *item)
 {
     Q_ASSERT(method);
@@ -147,6 +152,7 @@ void WaylandTextModel::setInputMethod(WaylandInputMethod *method, WebOSSurfaceIt
         new WaylandInputMethodContext(method, this); // context has a lifecycle which is bound to wayland resource
 
     m_inputMethod = method;
+    m_surfaceItem = item;
 
     m_inputMethod->setTargetSurfaceItem(item);
     // Check m_preferredPanelRect as it can be set before.

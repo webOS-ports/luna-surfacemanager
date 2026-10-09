@@ -93,6 +93,8 @@ public:
     bool isAllowed() const { return m_inputMethod && m_inputMethod->allowed(); }
     WaylandInputMethod *inputMethod() const { return m_inputMethod; }
     void setInputMethod(WaylandInputMethod *method, WebOSSurfaceItem *item);
+    //! The scene item of the surface this text model was last activated on.
+    WebOSSurfaceItem *surfaceItem() const;
     WaylandTextModelFactory *factory() const { return m_factory; }
     void setDelegate(WaylandTextModelDelegate *delegate);
 
@@ -123,6 +125,7 @@ private:
     WaylandInputMethodContext* m_context;
     struct ::wl_resource* m_resource;
     struct ::wl_resource* m_surface;
+    QPointer<WebOSSurfaceItem> m_surfaceItem;
     bool m_active;
     WaylandTextModelFactory *m_factory;
     QRect m_preferredPanelRect;

@@ -86,6 +86,9 @@ public:
     QRect inputPanelRect() const { return m_rect; }
     void setInputPanelRect(const QRect& rect);
 
+    //! The scene item of the panel surface on screen, if there is one.
+    WebOSSurfaceItem *activeSurfaceItem() const { return m_activeSurface ? m_activeSurface->surfaceItem() : nullptr; }
+
 signals:
     void reportPanelState(InputPanelState state);
     void reportPanelRect(const QRect& rect);
