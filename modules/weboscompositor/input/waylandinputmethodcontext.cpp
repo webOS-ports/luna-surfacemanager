@@ -30,6 +30,7 @@
 #include "waylandinputmethod.h"
 #include "waylandinputpanel.h"
 #include "waylandtextmodel.h"
+#include "webossurfaceitem.h"
 #include "waylandinputmethodmanager.h"
 
 #ifdef MULTIINPUT_SUPPORT
@@ -374,7 +375,46 @@ void WaylandInputMethodContext::updatePanelRect(const QRect& rect) const
     if (!m_textModel)
         return;
 
-    m_textModel->sendInputPanelRect(rect);
+    m_textModel->sendInputPanelRect(panelRectForClient(rect));
+}
+
+/*
+ * The panel's rectangle in the coordinates of the client it is sent to.
+ *
+ * WaylandInputPanel takes it from the panel surface's window mask, so it is
+ * in the panel surface's coordinates, and it used to go out as it was. A
+ * client takes it for its own: Qt hands it on as
+ * QInputMethod::keyboardRectangle(), documented as window coordinates. The
+ * two only agree where the panel and the client happen to start at the same
+ * place on screen - on LuneOS both sit just under the status bar - and
+ * anywhere else an application made room for the keyboard in the wrong place.
+ *
+ * Mapped through the scene: panel surface to panel item, panel item to client
+ * item (whatever the shell has done to either, a card moved or scaled), client
+ * item to client surface. Sent unchanged where either item is missing, as it
+ * always was.
+ */
+QRect WaylandInputMethodContext::panelRectForClient(const QRect& rect) const
+{
+    WebOSSurfaceItem *panel = m_inputMethod ? m_inputMethod->inputPanel()->activeSurfaceItem() : nullptr;
+    WebOSSurfaceItem *client = m_textModel ? m_textModel->surfaceItem() : nullptr;
+
+    if (!panel || !client || !rect.isValid())
+        return rect;
+
+    const QRectF inPanelItem(panel->mapFromSurface(QPointF(rect.topLeft())),
+                             panel->mapFromSurface(QPointF(rect.x() + rect.width(), rect.y() + rect.height())));
+    const QRectF inClientItem = client->mapRectFromItem(panel, inPanelItem);
+    const QPointF topLeft = client->mapToSurface(inClientItem.topLeft());
+    const QPointF bottomRight = client->mapToSurface(inClientItem.bottomRight());
+
+    const QRect mapped(qRound(topLeft.x()), qRound(topLeft.y()),
+                       qRound(bottomRight.x() - topLeft.x()), qRound(bottomRight.y() - topLeft.y()));
+
+    if (mapped != rect)
+        qInfo() << "[inputPanel] rect" << rect << "in the panel is" << mapped << "for" << client;
+
+    return mapped;
 }
 
 void WaylandInputMethodContext::activateTextModel()

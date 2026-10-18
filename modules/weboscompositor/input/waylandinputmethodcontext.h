@@ -108,6 +108,7 @@ public slots:
 
     void updatePanelState(const WaylandInputPanel::InputPanelState state) const;
     void updatePanelRect(const QRect& rect) const;
+    QRect panelRectForClient(const QRect& rect) const;
     void continueTextModelActivation();
 
 signals:
