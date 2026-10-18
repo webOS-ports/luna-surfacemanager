@@ -98,6 +98,9 @@ class WEBOS_COMPOSITOR_EXPORT WebOSCoreCompositor : public QWaylandCompositor
     //! Whether the pasteboard holds text. Legacy's Paste item was only offered when
     //! it did, and the shell's edit overlay asks the same question.
     Q_PROPERTY(bool clipboardHasText READ clipboardHasText NOTIFY clipboardHasTextChanged)
+    //! The size an xdg_shell window is configured with when it is created: the
+    //! size the shell is about to give it, its card size. Empty, the output's.
+    Q_PROPERTY(QSize defaultWindowSize READ defaultWindowSize WRITE setDefaultWindowSize NOTIFY defaultWindowSizeChanged)
 
 public:
     enum ExtensionFlag {
@@ -180,6 +183,9 @@ public:
     bool keepInputActive() { return m_keepInputActive; }
     bool clipboardHasText() const { return m_clipboardHasText; }
     void setKeepInputActive(bool enable);
+
+    QSize defaultWindowSize() const { return m_defaultWindowSize; }
+    void setDefaultWindowSize(const QSize &size);
 
 #ifdef MULTIINPUT_SUPPORT
     QWaylandSeat *queryInputDevice(QInputEvent *inputEvent);
@@ -281,6 +287,7 @@ signals:
 
     void keepInputActiveChanged();
     void clipboardHasTextChanged();
+    void defaultWindowSizeChanged();
 
     //Unix signals to QT signals;
     void reloadConfig(); //SIGHUP
@@ -370,6 +377,7 @@ private:
     bool m_mouseEventEnabled;
     bool m_keepInputActive;
     bool m_clipboardHasText = false;
+    QSize m_defaultWindowSize;
 
     WebOSShell* m_shell;
     WebOSInputManager *m_inputManager;

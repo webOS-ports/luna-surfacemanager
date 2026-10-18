@@ -284,10 +284,10 @@ WebOSCoreCompositor::WebOSCoreCompositor(ExtensionFlags extensions, const char *
      */
     connect(m_xdgShell, &QWaylandXdgShell::toplevelCreated, this,
             [this](QWaylandXdgToplevel *toplevel, QWaylandXdgSurface *xdgSurface) {
-        /* Start the window at the size the shell gave the last xdg_shell card
-         * (WebOSSurfaceItem::changeSize), and only fall back to the output.
-         * The shell resizes every card it opens, and for most clients one
-         * configure more or less is a relayout. Not for Waydroid: its windows
+        /* Start the window at the size the shell is about to give it
+         * (defaultWindowSize), and only fall back to the output. The shell
+         * resizes every card it opens, and for most clients one configure
+         * more or less is a relayout. Not for Waydroid: its windows
          * are views of one Android display, so going from the output size to
          * the card size is a display hotplug, and two in a row - the output
          * size on creation, the card size a moment later - race in Android's
@@ -297,7 +297,7 @@ WebOSCoreCompositor::WebOSCoreCompositor(ExtensionFlags extensions, const char *
          * Android window with it. Seen on a Zinwa Q25 (720x720 output,
          * 720x544 cards) once in ten rounds of closing and launching an app.
          */
-        QSize size = property("_luneosXdgCardSize").toSize();
+        QSize size = m_defaultWindowSize;
         if (size.isEmpty()) {
             if (QWaylandOutput *output = defaultOutput())
                 size = output->geometry().size();
@@ -1605,6 +1605,14 @@ void WebOSCoreCompositor::setMouseEventEnabled(bool enable)
     if (m_mouseEventEnabled != enable) {
         m_mouseEventEnabled = enable;
         emit mouseEventEnabledChanged();
+    }
+}
+
+void WebOSCoreCompositor::setDefaultWindowSize(const QSize &size)
+{
+    if (m_defaultWindowSize != size) {
+        m_defaultWindowSize = size;
+        emit defaultWindowSizeChanged();
     }
 }
 
