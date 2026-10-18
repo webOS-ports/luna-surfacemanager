@@ -1312,6 +1312,11 @@ void WebOSSurfaceItem::changeSize(const QSize &newSize)
 
     setConfiguredSize(newSize);
     toplevel->sendFullscreen(newSize);
+
+    // The size the next xdg_shell window starts at; see toplevelCreated in
+    // WebOSCoreCompositor.
+    if (m_compositor)
+        m_compositor->setProperty("_luneosXdgCardSize", newSize);
 }
 
 void WebOSSurfaceItem::setConfiguredSize(const QSize &size)
