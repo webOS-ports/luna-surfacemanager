@@ -284,9 +284,24 @@ WebOSCoreCompositor::WebOSCoreCompositor(ExtensionFlags extensions, const char *
      */
     connect(m_xdgShell, &QWaylandXdgShell::toplevelCreated, this,
             [this](QWaylandXdgToplevel *toplevel, QWaylandXdgSurface *xdgSurface) {
-        QSize size;
-        if (QWaylandOutput *output = defaultOutput())
-            size = output->geometry().size();
+        /* Start the window at the size the shell is about to give it
+         * (defaultWindowSize), and only fall back to the output. The shell
+         * resizes every card it opens, and for most clients one configure
+         * more or less is a relayout. Not for Waydroid: its windows
+         * are views of one Android display, so going from the output size to
+         * the card size is a display hotplug, and two in a row - the output
+         * size on creation, the card size a moment later - race in Android's
+         * system_server, which reads the new display's modes while it is
+         * already being reconnected, dies on a NullPointerException in
+         * LocalDisplayAdapter.updateDisplayModesLocked() and takes every
+         * Android window with it. Seen on a Zinwa Q25 (720x720 output,
+         * 720x544 cards) once in ten rounds of closing and launching an app.
+         */
+        QSize size = m_defaultWindowSize;
+        if (size.isEmpty()) {
+            if (QWaylandOutput *output = defaultOutput())
+                size = output->geometry().size();
+        }
         if (size.isEmpty())
             size = QSize(1920, 1080);
 
@@ -300,6 +315,11 @@ WebOSCoreCompositor::WebOSCoreCompositor(ExtensionFlags extensions, const char *
         if (xdgSurface && xdgSurface->surface()) {
             if (WebOSSurfaceItem *item = WebOSSurfaceItem::getSurfaceItemFromSurface(xdgSurface->surface())) {
                 item->setProperty("_luneosXdgToplevel", QVariant::fromValue<QObject *>(toplevel));
+                /* What it was just told, so the shell's own changeSize() to
+                 * the same size sends nothing. Waydroid's hwcomposer as
+                 * released reconnects Android's display on every configure,
+                 * a same-size one included. */
+                item->setConfiguredSize(size);
                 /* The property holds a plain pointer and the item outlives the
                  * toplevel in two ordinary cases: a client that unmaps by
                  * destroying its xdg_toplevel and keeps the wl_surface, and an
@@ -1585,6 +1605,14 @@ void WebOSCoreCompositor::setMouseEventEnabled(bool enable)
     if (m_mouseEventEnabled != enable) {
         m_mouseEventEnabled = enable;
         emit mouseEventEnabledChanged();
+    }
+}
+
+void WebOSCoreCompositor::setDefaultWindowSize(const QSize &size)
+{
+    if (m_defaultWindowSize != size) {
+        m_defaultWindowSize = size;
+        emit defaultWindowSizeChanged();
     }
 }
 
