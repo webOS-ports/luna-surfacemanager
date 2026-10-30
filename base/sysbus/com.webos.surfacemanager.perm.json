@@ -11,6 +11,7 @@
         "database.operation",
         "display.operation",
         "luna-sysmgr.operation",
+        "mediacontroller.management",
         "networkconnection.query",
         "networkconnection.management",
         "notification.management",
