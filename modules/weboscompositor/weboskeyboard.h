@@ -22,6 +22,7 @@
 
 class QWaylandSurface;
 class QWaylandDestroyListener;
+class QKeyEvent;
 
 struct KeyboardGrabber
 {
@@ -54,6 +55,25 @@ public:
     void addClient(QWaylandClient *client, uint32_t id, uint32_t version) override;
 
     virtual void updateModifierState(uint code, uint32_t state, bool repeat);
+
+    /*! \brief Count a key event the compositor has seen into the modifier state.
+     *
+     * Meant for an application-wide event filter, which is where the
+     * compositor watches keys. Such a filter sees one key many times: once as
+     * QGuiApplication hands it to the window, then again for every
+     * QCoreApplication::sendEvent() on its way to the item that takes it - the
+     * focused item, each parent it bubbles up to, each Keys.forwardTo target.
+     * The count differs from key to key and between a key's press and its
+     * release, and xkb counts presses: a Shift pressed four times and
+     * released twice is still down, and no later press and release of it
+     * evens that out. The input method was then told Shift with every key,
+     * Caps Lock included, and typed "!@#" for "123" from then on.
+     *
+     * So only the window's own delivery counts - the one QGuiApplication
+     * makes, the only one that arrives spontaneous - and every hop after it is
+     * ignored. Returns whether \a event was counted.
+     */
+    bool updateModifierStateFromEvent(const QKeyEvent *event);
 
     void startGrab(KeyboardGrabber *grab);
     void endGrab();
