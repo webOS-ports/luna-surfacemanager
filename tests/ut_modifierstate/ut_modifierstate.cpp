@@ -23,15 +23,18 @@
 // Keys.forwardTo, and check what WebOSKeyboard tells the input method's grab.
 
 #include "weboskeyboard.h"
+#include "fakewlclient.h"
 
 #include <QtTest>
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QWaylandClient>
 #include <QWaylandCompositor>
 #include <QWaylandKeymap>
 #include <QWaylandSeat>
+#include <QWaylandSurface>
 #include <QtWaylandCompositor/private/qwaylandkeyboard_p.h>
 #include <qpa/qwindowsysteminterface.h>
 #include <qpa/qwindowsysteminterface_p.h>
@@ -137,6 +140,7 @@ private Q_SLOTS:
     void testRepeatsAreNotPresses();
     void testReplacedGrabCannotEndTheNewOne();
     void testCurrentGrabEnds();
+    void testNoGrabTellsTheFocusedClient();
 
 private:
     void key(QEvent::Type type, quint32 evdevCode, int qtKey, bool autoRepeat = false);
@@ -360,6 +364,48 @@ void Ut_ModifierState::testCurrentGrabEnds()
 {
     m_keyboard->endGrab(&m_grabber);
     QCOMPARE(m_keyboard->currentGrab(), nullptr);
+}
+
+/*
+ * With no input method in the way the focused client is told, and nobody else.
+ * This used to go to wl_keyboard's own resource, which a compositor-side
+ * interface does not have, and was dropped.
+ */
+void Ut_ModifierState::testNoGrabTellsTheFocusedClient()
+{
+    FakeWlClient focusedClient(m_compositor);
+    FakeWlClient otherClient(m_compositor);
+    QVERIFY(focusedClient.client());
+    QVERIFY(otherClient.client());
+
+    auto *keyboard = QWaylandKeyboardPrivate::get(m_keyboard);
+    const uint32_t focusedId = focusedClient.newId();
+    keyboard->add(focusedClient.client(), focusedId, 1);
+    const uint32_t otherId = otherClient.newId();
+    keyboard->add(otherClient.client(), otherId, 1);
+
+    auto *surface = new QWaylandSurface(m_compositor,
+                                        QWaylandClient::fromWlClient(m_compositor, focusedClient.client()),
+                                        focusedClient.newId(), 1);
+
+    m_keyboard->endGrab(&m_grabber);
+    m_keyboard->setFocus(surface);
+    focusedClient.clear();
+    otherClient.clear();
+
+    key(QEvent::KeyPress, KEY_LEFTSHIFT, Qt::Key_Shift);
+    auto events = focusedClient.modifiers(focusedId);
+    QCOMPARE(events.size(), 1);
+    QCOMPARE(events.last().depressed, maskOf(XKB_MOD_NAME_SHIFT));
+
+    key(QEvent::KeyRelease, KEY_LEFTSHIFT, Qt::Key_Shift);
+    events = focusedClient.modifiers(focusedId);
+    QCOMPARE(events.size(), 2);
+    QCOMPARE(events.last().depressed, 0u);
+
+    QVERIFY(otherClient.modifiers(otherId).isEmpty());
+
+    m_keyboard->setFocus(nullptr);
 }
 
 int main(int argc, char *argv[])
