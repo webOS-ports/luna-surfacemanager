@@ -105,6 +105,7 @@ private Q_SLOTS:
     void testGrabGetsTheKeyboardAndTheModifiers();
     void testContextGoingAwayEndsItsGrab();
     void testLateReleaseKeepsTheNewerGrab();
+    void testRegrabGetsTheModifiers();
 
 private:
     uint32_t grab(Context &context);
@@ -230,6 +231,27 @@ void Ut_InputMethodGrab::testLateReleaseKeepsTheNewerGrab()
 
     newer.destroy();
     QCOMPARE(m_keyboard->currentGrab(), nullptr);
+}
+
+/*
+ * The keyboard is already this context's, but the second grab_keyboard makes a
+ * second wl_keyboard, and maliit a new xkb state for it.
+ */
+void Ut_InputMethodGrab::testRegrabGetsTheModifiers()
+{
+    Context context(m_method, m_client);
+    grab(context);
+    shift(WL_KEYBOARD_KEY_STATE_PRESSED);
+
+    const uint32_t second = grab(context);
+
+    const auto events = m_client->modifiers(second);
+    QCOMPARE(events.size(), 1);
+    QCOMPARE(events.last().depressed, shiftMask());
+    QCOMPARE(m_keyboard->currentGrab(), static_cast<KeyboardGrabber *>(context.context));
+
+    shift(WL_KEYBOARD_KEY_STATE_RELEASED);
+    context.destroy();
 }
 
 int main(int argc, char *argv[])
