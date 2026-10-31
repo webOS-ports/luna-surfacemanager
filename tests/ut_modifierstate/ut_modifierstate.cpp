@@ -135,6 +135,8 @@ private Q_SLOTS:
     void testLocksStillClearAfterFocusMoved();
     void testHopsAfterTheWindowAreNotCounted();
     void testRepeatsAreNotPresses();
+    void testReplacedGrabCannotEndTheNewOne();
+    void testCurrentGrabEnds();
 
 private:
     void key(QEvent::Type type, quint32 evdevCode, int qtKey, bool autoRepeat = false);
@@ -217,7 +219,7 @@ void Ut_ModifierState::cleanup()
     QCoreApplication::instance()->removeEventFilter(m_feed);
     delete m_feed;
     m_feed = nullptr;
-    m_keyboard->endGrab();
+    m_keyboard->endGrab(m_keyboard->currentGrab());
     delete m_window;
     m_window = nullptr;
     m_root = nullptr;
@@ -331,6 +333,33 @@ void Ut_ModifierState::testRepeatsAreNotPresses()
 
     QVERIFY(!xkbActive(XKB_MOD_NAME_SHIFT));
     QCOMPARE(m_grabber.depressed, 0u);
+}
+
+/*
+ * A grabber replaced by a newer one lets go late, as an input method context
+ * does when it is destroyed. The keyboard stays with the newer grab, or every
+ * key goes past the input method to the application from then on.
+ */
+void Ut_ModifierState::testReplacedGrabCannotEndTheNewOne()
+{
+    RecordingGrabber newer;
+    m_keyboard->startGrab(&newer);
+
+    m_keyboard->endGrab(&m_grabber);
+    QCOMPARE(m_keyboard->currentGrab(), &newer);
+
+    key(QEvent::KeyPress, KEY_LEFTSHIFT, Qt::Key_Shift);
+    QCOMPARE(newer.depressed, maskOf(XKB_MOD_NAME_SHIFT));
+    QCOMPARE(m_grabber.count, 0);
+    key(QEvent::KeyRelease, KEY_LEFTSHIFT, Qt::Key_Shift);
+
+    m_keyboard->endGrab(&newer);
+}
+
+void Ut_ModifierState::testCurrentGrabEnds()
+{
+    m_keyboard->endGrab(&m_grabber);
+    QCOMPARE(m_keyboard->currentGrab(), nullptr);
 }
 
 int main(int argc, char *argv[])

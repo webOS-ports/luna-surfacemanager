@@ -200,9 +200,13 @@ void WebOSKeyboard::startGrab(KeyboardGrabber *grab)
     m_grab->focused(focus());
 }
 
-void WebOSKeyboard::endGrab()
+void WebOSKeyboard::endGrab(KeyboardGrabber *grab)
 {
     Q_D(QWaylandKeyboard);
+
+    if (m_grab != grab)
+        return;
+
     m_grab = nullptr;
     setFocus(m_pendingFocus);
 
