@@ -1849,15 +1849,18 @@ bool WebOSCoreCompositor::EventPreprocessor::eventFilter(QObject *obj, QEvent *e
 
         // Update key modifier state for all input devices
         // so that they're always in sync with lock state.
+        // Once per key: this filter sees a key again for every hop it makes
+        // to an item, and only the window's delivery may count - see
+        // WebOSKeyboard::updateModifierStateFromEvent().
         foreach (QWaylandSeat *dev, m_compositor->inputDevices()) {
             WebOSKeyboard *keyboard = qobject_cast<WebOSKeyboard *>(dev->keyboard());
             if (keyboard)
-                keyboard->updateModifierState(ke->nativeScanCode(), (ke->type() == QEvent::KeyPress)? WL_KEYBOARD_KEY_STATE_PRESSED : WL_KEYBOARD_KEY_STATE_RELEASED, ke->isAutoRepeat());
+                keyboard->updateModifierStateFromEvent(ke);
         }
 #else
         WebOSKeyboard *keyboard = qobject_cast<WebOSKeyboard *>(m_compositor->defaultSeat()->keyboard());
         if (keyboard)
-            keyboard->updateModifierState(ke->nativeScanCode(), (ke->type() == QEvent::KeyPress)? WL_KEYBOARD_KEY_STATE_PRESSED : WL_KEYBOARD_KEY_STATE_RELEASED, ke->isAutoRepeat());
+            keyboard->updateModifierStateFromEvent(ke);
 #endif
     }
 

@@ -26,3 +26,8 @@ SUBDIRS = modules
 compositor_base {
     SUBDIRS += base
 }
+
+# Unit tests, only when asked for, as in base/.
+webos_tests {
+    SUBDIRS += tests
+}
