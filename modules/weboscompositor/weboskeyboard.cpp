@@ -18,6 +18,7 @@
 #include <QWaylandClient>
 #include <QWaylandSurface>
 #include <QtWaylandCompositor/private/qwaylandkeyboard_p.h>
+#include <QKeyEvent>
 #include <QPointer>
 #include <QTimer>
 
@@ -133,6 +134,20 @@ void WebOSKeyboard::updateModifierState(uint code, uint32_t state, bool repeat)
 #else
     d->updateModifierState(code, state);
 #endif
+}
+
+bool WebOSKeyboard::updateModifierStateFromEvent(const QKeyEvent *event)
+{
+    if (!event || !event->spontaneous())
+        return false;
+
+    if (event->type() != QEvent::KeyPress && event->type() != QEvent::KeyRelease)
+        return false;
+
+    updateModifierState(event->nativeScanCode(),
+                        event->type() == QEvent::KeyPress ? WL_KEYBOARD_KEY_STATE_PRESSED : WL_KEYBOARD_KEY_STATE_RELEASED,
+                        event->isAutoRepeat());
+    return true;
 }
 
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
