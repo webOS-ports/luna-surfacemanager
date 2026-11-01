@@ -22,9 +22,12 @@ TARGET = ut_modifierstate
 CONFIG += testcase
 QT += testlib gui-private qml quick waylandcompositor waylandcompositor-private weboscompositor
 
-LIBS += -lxkbcommon
+INCLUDEPATH += $$PWD/..
+
+LIBS += -lxkbcommon -lwayland-server
 
 SOURCES += ut_modifierstate.cpp
+HEADERS += ../fakewlclient.h
 
 target.path = $$WEBOS_INSTALL_TESTSDIR/luna-surfacemanager
 INSTALLS += target

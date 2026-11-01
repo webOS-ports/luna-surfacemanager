@@ -17,4 +17,5 @@
 TEMPLATE = subdirs
 
 SUBDIRS = \
+    ut_inputmethodgrab \
     ut_modifierstate
