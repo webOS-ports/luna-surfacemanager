@@ -3,6 +3,9 @@
         "com.webos.surfacemanager/captureCompositorOutput",
         "com.webos.surfacemanager-cardshell/takeScreenShot"
     ],
+    "surfacemanager.sound": [
+        "com.webos.surfacemanager.sound/playSoundNotification"
+    ],
     "surfacemanager.query": [
         "com.webos.surfacemanager/getForegroundAppInfo"
     ],

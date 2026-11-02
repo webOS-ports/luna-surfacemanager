@@ -1,6 +1,7 @@
 {
     "allowedNames": ["com.webos.surfacemanager*"],
     "surfacemanager.devutility": ["oem"],
+    "surfacemanager.sound": ["oem"],
     "surfacemanager.query": ["oem"],
     "surfacemanager.display": ["oem"]
 }
