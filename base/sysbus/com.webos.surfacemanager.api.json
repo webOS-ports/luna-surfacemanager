@@ -1,7 +1,7 @@
 {
     "surfacemanager.devutility": [
         "com.webos.surfacemanager/captureCompositorOutput",
-        "com.webos.surfacemanager-cardshell/takeScreenShot"
+        "com.webos.surfacemanager.cardshell/takeScreenShot"
     ],
     "surfacemanager.sound": [
         "com.webos.surfacemanager.sound/playSoundNotification"
