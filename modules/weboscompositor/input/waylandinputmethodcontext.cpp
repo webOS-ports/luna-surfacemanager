@@ -573,8 +573,12 @@ void WaylandInputMethodContext::releaseGrab()
 
 void WaylandInputMethodContext::grabKeyboardImpl()
 {
-    if (m_grabbed)
+    // The keyboard is ours already, but this is a new wl_keyboard, with a new
+    // xkb state on the other end: it starts out knowing of no modifier.
+    if (m_grabbed) {
+        updateModifiers();
         return;
+    }
 
 #ifdef MULTIINPUT_SUPPORT
     QList<QWaylandSeat *> devices = m_compositor->inputDevices();
@@ -612,8 +616,8 @@ void WaylandInputMethodContext::releaseGrabImpl()
     QList<QWaylandSeat *> devices = m_compositor->inputDevices();
     foreach (QWaylandSeat *device, devices) {
         auto p_keyboard = static_cast<WebOSKeyboard*>(device->keyboard());
-        if (p_keyboard) {
-            p_keyboard->endGrab();
+        if (p_keyboard && p_keyboard->currentGrab() == this) {
+            p_keyboard->endGrab(this);
 
             if(dynamic_cast<WebOSInputDevice*>(device) == nullptr) {
                 continue;
@@ -625,7 +629,7 @@ void WaylandInputMethodContext::releaseGrabImpl()
     }
 #else
     if (m_grabKeyboard) {
-        m_grabKeyboard->endGrab();
+        m_grabKeyboard->endGrab(this);
         m_grabKeyboard = nullptr;
     }
 #endif

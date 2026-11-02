@@ -76,7 +76,14 @@ public:
     bool updateModifierStateFromEvent(const QKeyEvent *event);
 
     void startGrab(KeyboardGrabber *grab);
-    void endGrab();
+
+    /*! \brief End \a grab, if it is still the one holding the keyboard.
+     *
+     * A grab can be replaced without being ended: the input method context
+     * that held it lets go when it is destroyed, by which time a newer context
+     * may have grabbed the keyboard, and that grab is not the old one's to end.
+     */
+    void endGrab(KeyboardGrabber *grab);
     KeyboardGrabber *currentGrab() const;
 
     /*! \brief Deliver a key to the focused surface past an active grab.

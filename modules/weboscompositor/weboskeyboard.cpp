@@ -126,7 +126,10 @@ void WebOSKeyboard::updateModifierState(uint code, uint32_t state, bool repeat)
     } else {
         qDebug() << "Updating modifiers for keyboard" << this << depressed << latched << locked << grp;
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
-        d->send_modifiers(compositor()->nextSerial(), depressed, latched, locked, grp);
+        // Not the send_modifiers() that takes no resource: the keyboard's
+        // resources are all added per client, so that one has nowhere to go
+        // and the client would never hear of a modifier.
+        sendModifiersMaskToFocus(depressed, latched, locked, grp);
 #else
         d->modifiers(compositor()->nextSerial(), depressed, latched, locked, grp);
 #endif
@@ -200,9 +203,13 @@ void WebOSKeyboard::startGrab(KeyboardGrabber *grab)
     m_grab->focused(focus());
 }
 
-void WebOSKeyboard::endGrab()
+void WebOSKeyboard::endGrab(KeyboardGrabber *grab)
 {
     Q_D(QWaylandKeyboard);
+
+    if (m_grab != grab)
+        return;
+
     m_grab = nullptr;
     setFocus(m_pendingFocus);
 
