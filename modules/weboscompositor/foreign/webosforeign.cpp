@@ -16,6 +16,7 @@
 
 #include "videooutputd_communicator.h"
 #include "punchthroughelement.h"
+#include <QtGui/qpa/qplatformnativeinterface.h>
 #include "weboscorecompositor.h"
 #include "weboscompositorwindow.h"
 #include "webosforeign.h"
@@ -434,6 +435,16 @@ void WebOSExported::updateDisplayPosition(bool forceUpdate)
     }
 }
 
+// Video plane: tells the hwcomposer plugin where the video plane goes.
+// Null on a platform without a video plane.
+using VideoPlaneGeometryFunc = void (*)(int, int, int, int, int);
+static VideoPlaneGeometryFunc videoPlaneGeometryFunc()
+{
+    static const auto func = reinterpret_cast<VideoPlaneGeometryFunc>(
+        QGuiApplication::platformNativeInterface()->nativeResourceForIntegration("videoplanegeometry"));
+    return func;
+}
+
 void WebOSExported::calculateVideoDispRatio()
 {
     qInfo() << "WebOSExported::calculateVideoDispRatio is called on " << m_windowId;
@@ -739,7 +750,10 @@ void WebOSExported::updateExportedItemSize()
         m_punchThroughItem->setWidth(m_exportedItem->width());
         m_punchThroughItem->setHeight(m_exportedItem->height());
     } else {
-        if (m_exportedType == WebOSForeign::OpaqueObject) {
+        // Video plane: no media pipeline imports this window on the
+        // video plane path, so nothing else asks for the hole.
+        if (m_exportedType == WebOSForeign::OpaqueObject
+            || videoPlaneGeometryFunc()) {
             setPunchThrough(true);
         }
     }
@@ -1058,13 +1072,44 @@ void WebOSExported::setDestinationRegion(struct::wl_resource *destination_region
     }
 }
 
+// Video plane: where the hole really is on the panel. A parent moves
+// and scales the card, and no signal reaches us for that, so this runs for each
+// rendered frame. A rect of width -1 hides the video plane.
+void WebOSExported::sendVideoPlaneGeometry()
+{
+    if (!m_exportedItem)
+        return;
+    const QRect scene = m_exportedItem->mapRectToScene(
+        QRectF(0, 0, m_exportedItem->width(), m_exportedItem->height())).toRect();
+    const bool minimized = m_surfaceItem && m_surfaceItem->state() == Qt::WindowMinimized;
+    if (m_punchThroughItem)
+        static_cast<PunchThroughItem *>(m_punchThroughItem.data())->setBlack(minimized);
+    const bool shown = m_exportedItem->isVisible() && !scene.isEmpty() && !minimized;
+    if (!shown && !m_videoPlaneRect.isValid())
+        return;
+    const QRect r = shown ? scene : QRect();
+    const QPointF d = m_exportedItem->mapToScene(QPointF(1, 0)) - m_exportedItem->mapToScene(QPointF(0, 0));
+    const int rotation = qAbs(d.x()) >= qAbs(d.y()) ? (d.x() >= 0 ? 0 : 180) : (d.y() >= 0 ? 90 : 270);
+    if (r == m_videoPlaneRect && rotation == m_videoPlaneRotation)
+        return;
+    m_videoPlaneRect = r;
+    m_videoPlaneRotation = rotation;
+    const QRect sent = shown ? r : QRect(0, 0, -1, -1);
+    if (const auto func = videoPlaneGeometryFunc())
+        func(sent.x(), sent.y(), sent.width(), sent.height(), rotation);
+}
+
 void WebOSExported::updateCompositorWindow(QQuickWindow *window)
 {
     if (window != m_compositorWindow) {
         if (m_compositorWindow)
             disconnect(m_compositorWindow, &WebOSCompositorWindow::outputGeometryChanged, this, &WebOSExported::calculateAll);
+        if (m_compositorWindow)
+            disconnect(m_compositorWindow, &QQuickWindow::afterAnimating, this, &WebOSExported::sendVideoPlaneGeometry);
         m_compositorWindow = static_cast<WebOSCompositorWindow *>(window);
         connect(m_compositorWindow, &WebOSCompositorWindow::outputGeometryChanged, this, &WebOSExported::calculateAll);
+        if (m_compositorWindow && videoPlaneGeometryFunc())
+            connect(m_compositorWindow, &QQuickWindow::afterAnimating, this, &WebOSExported::sendVideoPlaneGeometry);
 
         calculateAll();
     }
