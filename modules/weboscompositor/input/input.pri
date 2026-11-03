@@ -22,6 +22,7 @@ SOURCES += \
     $$PWD/waylandtextmodelfactory.cpp \
     $$PWD/waylandtextmodel.cpp \
     $$PWD/waylandinputmethodcontext.cpp \
+    $$PWD/inputpanelrectfollower.cpp \
     $$PWD/waylandinputmethod.cpp \
     $$PWD/waylandprimaryinputmethod.cpp \
     $$PWD/waylandinputpanelfactory.cpp \
@@ -32,6 +33,7 @@ HEADERS += \
     $$PWD/waylandtextmodelfactory.h \
     $$PWD/waylandtextmodel.h \
     $$PWD/waylandinputmethodcontext.h \
+    $$PWD/inputpanelrectfollower.h \
     $$PWD/waylandinputmethod.h \
     $$PWD/waylandprimaryinputmethod.h \
     $$PWD/waylandinputpanelfactory.h \

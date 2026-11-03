@@ -20,11 +20,12 @@
 # The context's source is built in, not taken from the library: the test defines
 # WaylandInputMethod::inputDevice() itself, which goes through a
 # WebOSCoreCompositor's windows, and only the context's own calls find that one.
-# The panel comes along because the library does not export it.
+# The panel comes along because the library does not export it, and so does
+# the context's InputPanelRectFollower.
 
 TARGET = ut_inputmethodgrab
 CONFIG += testcase
-QT += testlib gui-private waylandcompositor waylandcompositor-private weboscompositor
+QT += testlib gui-private quick waylandcompositor waylandcompositor-private weboscompositor
 
 INCLUDEPATH += \
     $$PWD/.. \
@@ -39,12 +40,14 @@ LIBS += -lxkbcommon -lwayland-server
 SOURCES += \
     ut_inputmethodgrab.cpp \
     ../../modules/weboscompositor/input/waylandinputmethodcontext.cpp \
-    ../../modules/weboscompositor/input/waylandinputpanel.cpp
+    ../../modules/weboscompositor/input/waylandinputpanel.cpp \
+    ../../modules/weboscompositor/input/inputpanelrectfollower.cpp
 
 HEADERS += \
     ../fakewlclient.h \
     ../../modules/weboscompositor/input/waylandinputmethodcontext.h \
-    ../../modules/weboscompositor/input/waylandinputpanel.h
+    ../../modules/weboscompositor/input/waylandinputpanel.h \
+    ../../modules/weboscompositor/input/inputpanelrectfollower.h
 
 target.path = $$WEBOS_INSTALL_TESTSDIR/luna-surfacemanager
 INSTALLS += target
