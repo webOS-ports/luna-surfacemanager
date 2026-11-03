@@ -32,6 +32,7 @@
 #include "waylandtextmodel.h"
 #include "webossurfaceitem.h"
 #include "waylandinputmethodmanager.h"
+#include "inputpanelrectfollower.h"
 
 #ifdef MULTIINPUT_SUPPORT
 #include "../weboscorecompositor.h"
@@ -68,6 +69,16 @@ WaylandInputMethodContext::WaylandInputMethodContext(WaylandInputMethod* inputMe
     , m_delegate(new WaylandInputMethodContextDelegate())
 {
     qDebug() << this;
+
+    m_panelRectFollower = new InputPanelRectFollower(
+        [this](const QRect &rect) { return panelRectForClient(rect); },
+        [this](const QRect &rect) {
+            if (!m_textModel)
+                return;
+            qInfo() << "[inputPanel] sending rect" << rect << "to" << m_textModel->surfaceItem();
+            m_textModel->sendInputPanelRect(rect);
+        },
+        this);
 
     connect(model, SIGNAL(activated()), this, SLOT(activateTextModel()));
     connect(model, SIGNAL(deactivated()), this, SLOT(deactivateTextModel()));
@@ -362,20 +373,26 @@ void WaylandInputMethodContext::deactivate()
     }
 }
 
-void WaylandInputMethodContext::updatePanelState(const WaylandInputPanel::InputPanelState state) const
+void WaylandInputMethodContext::updatePanelState(const WaylandInputPanel::InputPanelState state)
 {
+    if (state == WaylandInputPanel::InputPanelHidden)
+        m_panelRectFollower->hide();
+
     if (!m_textModel)
         return;
 
     m_textModel->sendInputPanelState(state);
 }
 
-void WaylandInputMethodContext::updatePanelRect(const QRect& rect) const
+void WaylandInputMethodContext::updatePanelRect(const QRect& rect)
 {
     if (!m_textModel)
         return;
 
-    m_textModel->sendInputPanelRect(panelRectForClient(rect));
+    // The rectangle depends on where the client is, so the active client is
+    // followed for as long as the panel is up: see InputPanelRectFollower.
+    const WebOSSurfaceItem *client = m_textModel->isActive() ? m_textModel->surfaceItem() : nullptr;
+    m_panelRectFollower->show(rect, client ? client->window() : nullptr);
 }
 
 /*
@@ -410,9 +427,6 @@ QRect WaylandInputMethodContext::panelRectForClient(const QRect& rect) const
 
     const QRect mapped(qRound(topLeft.x()), qRound(topLeft.y()),
                        qRound(bottomRight.x() - topLeft.x()), qRound(bottomRight.y() - topLeft.y()));
-
-    if (mapped != rect)
-        qInfo() << "[inputPanel] rect" << rect << "in the panel is" << mapped << "for" << client;
 
     return mapped;
 }
@@ -543,6 +557,8 @@ void WaylandInputMethodContext::platformDataModel(const QString& text)
 
 void WaylandInputMethodContext::cleanup()
 {
+    m_panelRectFollower->hide();
+
     if (!m_inputMethod)
         return;
 
