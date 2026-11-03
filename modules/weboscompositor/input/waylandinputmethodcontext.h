@@ -28,6 +28,7 @@
 #include "waylandinputpanel.h"
 #include "weboskeyboard.h"
 
+class InputPanelRectFollower;
 class WaylandInputMethod;
 class WaylandTextModel;
 class WebOSCoreCompositor;
@@ -106,8 +107,8 @@ public slots:
     void modifiers(uint32_t serial, uint32_t mods_depressed, uint32_t mods_latched, uint32_t mods_locked, uint32_t group) override;
     void updateModifiers() override;
 
-    void updatePanelState(const WaylandInputPanel::InputPanelState state) const;
-    void updatePanelRect(const QRect& rect) const;
+    void updatePanelState(const WaylandInputPanel::InputPanelState state);
+    void updatePanelRect(const QRect& rect);
     QRect panelRectForClient(const QRect& rect) const;
     void continueTextModelActivation();
 
@@ -139,6 +140,8 @@ private:
     WebOSCoreCompositor *m_compositor = nullptr;
 #endif
     QScopedPointer<WaylandInputMethodContextDelegate> m_delegate;
+    //! Sends the panel rectangle again when the client moves under it.
+    InputPanelRectFollower *m_panelRectFollower = nullptr;
 };
 
 #endif //WAYLANDINPUTMETHOD_H
