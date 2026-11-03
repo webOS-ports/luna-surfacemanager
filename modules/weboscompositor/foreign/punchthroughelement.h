@@ -49,6 +49,17 @@ public:
         setFlag(ItemHasContents, true);
     }
 
+    // Video plane: a card is drawn through a texture, so a transparent
+    // hole would show the wallpaper there instead of the video plane.
+    void setBlack(bool black)
+    {
+        const QColor c = black ? QColor(Qt::black) : QColor(Qt::transparent);
+        if (c != m_color) {
+            m_color = c;
+            update();
+        }
+    }
+
     QSGNode *updatePaintNode(QSGNode *node, UpdatePaintNodeData *) override
     {
         PunchThroughNode *n = static_cast<PunchThroughNode *>(node);

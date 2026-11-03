@@ -153,6 +153,7 @@ private slots:
     void calculateAll();
     void onSurfaceDestroyed();
     void updateCompositorWindow(QQuickWindow *window);
+    void sendVideoPlaneGeometry();
 
 protected:
     void updateVideoWindowList(QString contextId, QRect videoDisplayRect, bool needRemove);
@@ -174,6 +175,8 @@ protected:
     QRect m_originalRequestedRegion;
     QRect m_requestedRegion;
     QRect m_videoDisplayRect;
+    QRect m_videoPlaneRect;
+    int m_videoPlaneRotation = 0;
     QString m_windowId;
     QString m_contextId;
     QString m_muteRegisteredContextId;
