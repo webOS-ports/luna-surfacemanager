@@ -207,12 +207,19 @@ void WaylandInputPanel::updateInputPanelRect(WebOSSurface *surface)
         if (lInputAreaRect.width() > largestWindowMask.width()) largestWindowMask = lInputAreaRect;
     }
 
-    // At info, because the application is resized around this rectangle and it
-    // is derived from the panel surface's window mask - a value set in another
-    // process, which nothing here can otherwise show. An application still
-    // overlapped by the panel is either not being told, or being told this.
-    qInfo() << "[inputPanel] mask" << newRegion << "-> rect" << largestWindowMask
-            << "state" << m_state;
+    // At info when it gives a rectangle other than the last mask did, because
+    // the application is resized around it and it is derived from the panel
+    // surface's window mask - a value set in another process, which nothing
+    // here can otherwise show. An application still overlapped by the panel is
+    // either not being told, or being told this. The same mask again is every
+    // repaint of the panel (each key typed), so that is at debug.
+    if (largestWindowMask != m_lastMaskRect)
+        qInfo() << "[inputPanel] mask" << newRegion << "-> rect" << largestWindowMask
+                << "state" << m_state;
+    else
+        qDebug() << "[inputPanel] mask" << newRegion << "-> rect" << largestWindowMask
+                 << "state" << m_state;
+    m_lastMaskRect = largestWindowMask;
 
     if (largestWindowMask.width()>0) {
         // consider that the first defined mask region is the input area

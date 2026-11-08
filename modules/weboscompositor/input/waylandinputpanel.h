@@ -117,6 +117,8 @@ private:
 
     InputPanelState m_state;
     QRect m_rect;
+    // The rect the last mask gave, empty or not: only a change is logged at info.
+    QRect m_lastMaskRect;
 };
 
 #endif //WAYLANDINPUTPANEL_H
