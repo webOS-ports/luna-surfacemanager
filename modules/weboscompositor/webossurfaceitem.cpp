@@ -381,7 +381,7 @@ void WebOSSurfaceItem::mousePressEvent(QMouseEvent *event)
             emit hasKeyboardFocusChanged();
         }
 
-        qInfo() << this << &e << inputDevice;
+        qDebug() << this << &e << inputDevice;
 
         if (!w->accessible()) {
             // Send extra mouse move event as otherwise the client
@@ -421,7 +421,7 @@ void WebOSSurfaceItem::mouseReleaseEvent(QMouseEvent *event)
     QWaylandSeat *inputDevice = w->inputDevice();
 #endif
 
-    qInfo() << this << &e << inputDevice;
+    qDebug() << this << &e << inputDevice;
 
     if (!w->accessible()) {
         // Send extra mouse move event as otherwise the client
@@ -575,7 +575,7 @@ void WebOSSurfaceItem::touchEvent(QTouchEvent *event)
             }
         }
         if (e.type() == QEvent::TouchBegin || e.type() == QEvent::TouchEnd)
-            qInfo() << this << &e << seat;
+            qDebug() << this << &e << seat;
 
         seat->sendFullTouchEvent(surface(), &e);
     } else {
@@ -765,7 +765,7 @@ void WebOSSurfaceItem::processKeyEvent(QKeyEvent *event)
         keyboard->currentGrab()) {
 
         if (hasFocus()) {
-            qInfo() << this << event << inputDevice;
+            qDebug() << this << event << inputDevice;
             if (event->type() == QEvent::KeyPress) {
                 updateHasKeyEvent(true);
             } else if (event->type() == QEvent::KeyRelease) {
@@ -773,14 +773,14 @@ void WebOSSurfaceItem::processKeyEvent(QKeyEvent *event)
             }
             inputDevice->sendFullKeyEvent(event);
         } else {
-            qInfo() << "Surface is not focused and not a current keyboard grab. Do not send key: " << this << event->key();
+            qDebug() << "Surface is not focused and not a current keyboard grab. Do not send key: " << this << event->key();
         }
         return;
     }
 
     // Surface group
     if (acceptsKeyEvent(event)) {
-        qInfo() << this << "surface group case" << event << inputDevice;
+        qDebug() << this << "surface group case" << event << inputDevice;
         inputDevice->setKeyboardFocus(surface());
         if (event->type() == QEvent::KeyPress) {
             updateHasKeyEvent(true);
@@ -792,20 +792,20 @@ void WebOSSurfaceItem::processKeyEvent(QKeyEvent *event)
         WebOSSurfaceItem *nextItem = NULL;
         if (m_surfaceGroup->allowLayerKeyOrder()) {
             nextItem = m_surfaceGroup->nextKeyOrderedSurfaceGroupItem(this);
-            qInfo() << this << "investigates next key ordered item: " << nextItem << event->key();
+            qDebug() << this << "investigates next key ordered item: " << nextItem << event->key();
         }
         else {
             nextItem = m_surfaceGroup->nextZOrderedSurfaceGroupItem(this);
-            qInfo() << this << "investigates next z ordered item: " << nextItem << event->key();
+            qDebug() << this << "investigates next z ordered item: " << nextItem << event->key();
         }
         if (nextItem) {
             nextItem->processKeyEvent(event);
         }
         else {
-            qInfo() << this << "got no next ordered item: " << event->key() << m_surfaceGroup->allowLayerKeyOrder();
+            qDebug() << this << "got no next ordered item: " << event->key() << m_surfaceGroup->allowLayerKeyOrder();
         }
     } else {
-        qInfo() << "Not surfaced: " << this << event->key();
+        qDebug() << "Not surfaced: " << this << event->key();
     }
 }
 
@@ -831,7 +831,7 @@ void WebOSSurfaceItem::updateHasKeyEvent(bool status)
 {
     m_hasKeyEvent = status;
     if(m_requestKeyEventStatus) {
-        qInfo() << "emit hasKeyEvent: " << m_hasKeyEvent;
+        qDebug() << "emit hasKeyEvent: " << m_hasKeyEvent;
         emit hasKeyEventChanged();
     }
 }

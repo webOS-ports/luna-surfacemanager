@@ -20,6 +20,7 @@
 
 #include "waylandinputmethod.h"
 #include "waylandinputmethodcontext.h"
+#include "waylandinputpanel.h"
 #include "waylandtextmodel.h"
 #include "weboskeyboard.h"
 #include "webossurface.h"
@@ -40,6 +41,20 @@
 namespace {
 
 QWaylandSeat *s_seat = nullptr;
+
+//! What WebOSSurface::windowMask() gives the panel.
+QRegion s_windowMask;
+
+//! The "[inputPanel] mask" lines logged at info, while a test collects them.
+int s_maskInfoLines = 0;
+QtMessageHandler s_previousHandler = nullptr;
+
+void collectMaskLines(QtMsgType type, const QMessageLogContext &context, const QString &message)
+{
+    if (type == QtInfoMsg && message.contains(QLatin1String("[inputPanel] mask")))
+        ++s_maskInfoLines;
+    s_previousHandler(type, context, message);
+}
 
 class TestCompositor : public QWaylandCompositor
 {
@@ -85,12 +100,24 @@ QWaylandSeat *WaylandInputMethod::inputDevice()
 }
 
 // The panel's source asks these of a panel surface, and there are none here.
-// The library does not export them.
+// The library does not export them. A plain QWaylandSurface passes for one.
 const QMetaObject WebOSSurface::staticMetaObject = QWaylandSurface::staticMetaObject;
 QRegion WebOSSurface::windowMask()
 {
-    return QRegion();
+    return s_windowMask;
 }
+
+namespace {
+
+//! A surface the panel takes for a WebOSSurface: qobject_cast compares
+//! metaobjects by address, and the stand-in above is a copy.
+class PanelSurface : public QWaylandSurface
+{
+public:
+    const QMetaObject *metaObject() const override { return &WebOSSurface::staticMetaObject; }
+};
+
+} // namespace
 
 class Ut_InputMethodGrab : public QObject
 {
@@ -106,6 +133,7 @@ private Q_SLOTS:
     void testContextGoingAwayEndsItsGrab();
     void testLateReleaseKeepsTheNewerGrab();
     void testRegrabGetsTheModifiers();
+    void testPanelMaskIsAtInfoOnlyWhenItChanges();
 
 private:
     uint32_t grab(Context &context);
@@ -252,6 +280,48 @@ void Ut_InputMethodGrab::testRegrabGetsTheModifiers()
 
     shift(WL_KEYBOARD_KEY_STATE_RELEASED);
     context.destroy();
+}
+
+// The panel surface is damaged on every repaint, i.e. on every key typed. The
+// mask line is at info only when the mask gives another rectangle than the
+// last one did, an empty one included.
+void Ut_InputMethodGrab::testPanelMaskIsAtInfoOnlyWhenItChanges()
+{
+    // Freed with its resource, when cleanup() destroys the client.
+    auto *panel = new WaylandInputPanel(m_client->client(), m_client->newId());
+    PanelSurface surface;
+    QVERIFY(qobject_cast<WebOSSurface *>(&surface));
+    QVERIFY(QObject::connect(&surface, SIGNAL(damaged(QRegion)), panel, SLOT(onSurfaceDamaged(QRegion))));
+
+    s_maskInfoLines = 0;
+    s_previousHandler = qInstallMessageHandler(collectMaskLines);
+    auto damage = [&](const QRegion &mask) {
+        s_windowMask = mask;
+        emit static_cast<QWaylandSurface &>(surface).damaged(QRegion());
+    };
+
+    const QRegion keyboard(0, 1400, 1080, 520);
+    damage(keyboard);
+    const int first = s_maskInfoLines;
+    damage(keyboard);
+    damage(keyboard);
+    const int repainted = s_maskInfoLines;
+    damage(QRegion(0, 1300, 1080, 620));
+    const int moved = s_maskInfoLines;
+    damage(QRegion());
+    const int emptied = s_maskInfoLines;
+    damage(QRegion());
+    const int stillEmpty = s_maskInfoLines;
+
+    qInstallMessageHandler(s_previousHandler);
+    s_windowMask = QRegion();
+
+    QCOMPARE(first, 1);
+    QCOMPARE(repainted, 1);
+    QCOMPARE(moved, 2);
+    QCOMPARE(emptied, 3);
+    QCOMPARE(stillEmpty, 3);
+    QCOMPARE(panel->inputPanelRect(), QRect(0, 1300, 1080, 620));
 }
 
 int main(int argc, char *argv[])
