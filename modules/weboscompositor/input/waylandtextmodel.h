@@ -98,6 +98,12 @@ public:
     WaylandTextModelFactory *factory() const { return m_factory; }
     void setDelegate(WaylandTextModelDelegate *delegate);
 
+    //! Where the client last said the caret is, in its surface's coordinates,
+    //! and whether it has said so at all. A text model lives as long as one
+    //! activation of a field, so this is never left over from another one.
+    bool hasCursorRectangle() const { return m_hasCursorRectangle; }
+    QRect cursorRectangle() const { return m_cursorRectangle; }
+
 public slots:
     void sendInputPanelState(const WaylandInputPanel::InputPanelState state) const;
     void sendInputPanelRect(const QRect& geometry) const;
@@ -117,6 +123,7 @@ signals:
     void actionInvoked(uint32_t button, uint32_t index);
     void maxTextLengthChanged(uint32_t length);
     void platformDataChanged(const QString& text);
+    void cursorRectangleChanged();
 
 private:
     static const struct text_model_interface textModelImplementation;
@@ -129,6 +136,8 @@ private:
     bool m_active;
     WaylandTextModelFactory *m_factory;
     QRect m_preferredPanelRect;
+    QRect m_cursorRectangle;
+    bool m_hasCursorRectangle = false;
     QScopedPointer<WaylandTextModelDelegate> m_delegate;
 };
 #endif

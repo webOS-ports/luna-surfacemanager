@@ -134,6 +134,8 @@ private Q_SLOTS:
     void testLateReleaseKeepsTheNewerGrab();
     void testRegrabGetsTheModifiers();
     void testPanelMaskIsAtInfoOnlyWhenItChanges();
+    void testCursorRectangleIsKept();
+    void testCursorRectangleFollowsTheActiveContext();
 
 private:
     uint32_t grab(Context &context);
@@ -332,6 +334,90 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     Ut_InputMethodGrab test;
     return QTest::qExec(&test, argc, argv);
+}
+
+/*
+ * text_model.set_cursor_rectangle used to be dropped on the floor. It is the one
+ * thing that says where in a client the field being typed into is, which the
+ * shell needs to offer Cut/Copy/Paste only for a press on that field.
+ */
+void Ut_InputMethodGrab::testCursorRectangleIsKept()
+{
+    Context context(m_method, m_client);
+    WaylandTextModel *model = context.context->textModel();
+    QSignalSpy changed(model, &WaylandTextModel::cursorRectangleChanged);
+
+    QVERIFY(!model->hasCursorRectangle());
+
+    // A caret is a line with no width: that is a caret, not "unknown".
+    WaylandTextModel::textModelSetCursorRectangle(m_client->client(), model->handle(), 10, 20, 0, 18);
+    QVERIFY(model->hasCursorRectangle());
+    QCOMPARE(model->cursorRectangle(), QRect(10, 20, 0, 18));
+    QCOMPARE(changed.count(), 1);
+
+    // The same again is no change.
+    WaylandTextModel::textModelSetCursorRectangle(m_client->client(), model->handle(), 10, 20, 0, 18);
+    QCOMPARE(changed.count(), 1);
+
+    // A negative size is nonsense and is not taken.
+    WaylandTextModel::textModelSetCursorRectangle(m_client->client(), model->handle(), 1, 2, -3, 4);
+    QCOMPARE(model->cursorRectangle(), QRect(10, 20, 0, 18));
+    QCOMPARE(changed.count(), 1);
+
+    WaylandTextModel::textModelSetCursorRectangle(m_client->client(), model->handle(), 40, 20, 1, 18);
+    QCOMPARE(model->cursorRectangle(), QRect(40, 20, 1, 18));
+    QCOMPARE(changed.count(), 2);
+
+    context.destroy();
+}
+
+/*
+ * The input method reports the caret of the active context's field only: a
+ * change in one that is not active says nothing, and with no active context
+ * there is no caret to map.
+ */
+void Ut_InputMethodGrab::testCursorRectangleFollowsTheActiveContext()
+{
+    Context first(m_method, m_client);
+    Context second(m_method, m_client);
+    QSignalSpy changed(m_method, &WaylandInputMethod::cursorRectangleChanged);
+
+    QVERIFY(!m_method->cursorRectangleIn(nullptr).isValid());
+
+    emit first.context->activated();
+    QCOMPARE(changed.count(), 1);
+
+    WaylandTextModel::textModelSetCursorRectangle(m_client->client(), first.context->textModel()->handle(),
+                                                  5, 6, 0, 10);
+    QCOMPARE(changed.count(), 2);
+
+    // Not the active one: nothing.
+    WaylandTextModel::textModelSetCursorRectangle(m_client->client(), second.context->textModel()->handle(),
+                                                  7, 8, 0, 10);
+    QCOMPARE(changed.count(), 2);
+
+    // Known to the model, but there is no window here to map it out of, so it is
+    // still not a caret anyone can be shown.
+    QVERIFY(first.context->textModel()->hasCursorRectangle());
+    QVERIFY(!m_method->hasCursorRectangle());
+    QVERIFY(!m_method->cursorRectangleIn(nullptr).isValid());
+
+    // Moving to the other context follows that one's caret from then on.
+    emit second.context->activated();
+    QCOMPARE(changed.count(), 3);
+    WaylandTextModel::textModelSetCursorRectangle(m_client->client(), first.context->textModel()->handle(),
+                                                  9, 9, 0, 10);
+    QCOMPARE(changed.count(), 3);
+    WaylandTextModel::textModelSetCursorRectangle(m_client->client(), second.context->textModel()->handle(),
+                                                  9, 9, 0, 10);
+    QCOMPARE(changed.count(), 4);
+
+    emit second.context->deactivated();
+    QCOMPARE(changed.count(), 5);
+    QVERIFY(!m_method->active());
+
+    first.destroy();
+    second.destroy();
 }
 
 #include "ut_inputmethodgrab.moc"

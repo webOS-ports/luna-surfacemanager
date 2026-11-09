@@ -21,6 +21,7 @@
 #include <QRect>
 #include <QVector>
 #include <QPointer>
+#include <QVariant>
 
 #include <wayland-server.h>
 #include <wayland-input-method-server-protocol.h>
@@ -50,6 +51,8 @@ class WEBOS_COMPOSITOR_EXPORT WaylandInputMethod : public QObject {
     Q_PROPERTY(QRect preferredPanelRect READ preferredPanelRect NOTIFY preferredPanelRectChanged)
     Q_PROPERTY(bool hasPreferredPanelRect READ hasPreferredPanelRect NOTIFY hasPreferredPanelRectChanged)
     Q_PROPERTY(WebOSSurfaceItem* targetSurfaceItem READ targetSurfaceItem NOTIFY setTargetSurfaceItemChanged)
+    //! Whether the field being typed into has said where its caret is.
+    Q_PROPERTY(bool hasCursorRectangle READ hasCursorRectangle NOTIFY cursorRectangleChanged)
 
 public:
     WaylandInputMethod();
@@ -89,6 +92,19 @@ public:
     WebOSSurfaceItem* targetSurfaceItem() const { return m_targetSurfaceItem; }
     int displayId() { return m_displayId; }
 
+    bool hasCursorRectangle() const;
+    /*!
+     * Where the caret of the field being typed into is, in \a item's
+     * coordinates (the scene's with no item). Undefined in QML when no field is
+     * active or its client never said - a caret with no width is still a caret,
+     * so an empty rectangle cannot stand for "unknown".
+     *
+     * Mapped when asked rather than kept mapped, because the client's window
+     * moves under it - a card being dragged, Just Type sliding in - without the
+     * client sending anything.
+     */
+    Q_INVOKABLE QVariant cursorRectangleIn(QQuickItem *item = nullptr) const;
+
     QWaylandSeat *inputDevice();
 
 public slots:
@@ -105,6 +121,7 @@ signals:
     void hasPreferredPanelRectChanged();
     void setTargetSurfaceItemChanged();
     void displayIdChanged();
+    void cursorRectangleChanged();
 
 protected:
     static const struct input_method_interface inputMethodImplementation;
@@ -112,6 +129,7 @@ protected:
 private:
     void setHasPreferredPanelRect(const bool flag);
     void setDisplayId(const uint32_t displayId);
+    void followCursorRectangle();
 
     QWaylandCompositor* m_compositor;
     struct wl_resource* m_resource;
@@ -125,6 +143,7 @@ private:
     WaylandInputMethodManager* m_inputMethodManager;
     bool m_allowed;
     int m_displayId;
+    QMetaObject::Connection m_cursorRectangleConnection;
 };
 
 #endif //WAYLANDINPUTMETHOD_H
