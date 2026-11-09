@@ -239,6 +239,29 @@ void WaylandTextModel::textModelReset(struct wl_client *client, struct wl_resour
 
 void WaylandTextModel::textModelSetCursorRectangle(struct wl_client *client, struct wl_resource *resource, int32_t x, int32_t y, int32_t width, int32_t height)
 {
+    Q_UNUSED(client);
+
+    /*
+     * Kept rather than dropped: it is the one thing that says where in a client
+     * the field being typed into is. The shell's edit overlay offers Cut, Copy
+     * and Paste only for a press on that field, not for one anywhere else in
+     * the application while some field happens to hold the focus.
+     *
+     * A caret is often a line with no width, so a zero width is a real caret;
+     * only a negative size is nonsense.
+     */
+    WaylandTextModel* that = static_cast<WaylandTextModel*>(resource->data);
+    if (width < 0 || height < 0)
+        return;
+
+    const QRect rect(x, y, width, height);
+    if (that->m_hasCursorRectangle && that->m_cursorRectangle == rect)
+        return;
+
+    that->m_cursorRectangle = rect;
+    that->m_hasCursorRectangle = true;
+    qDebug() << that << "cursor rectangle" << rect;
+    emit that->cursorRectangleChanged();
 }
 
 void WaylandTextModel::textModelSetContentType(struct wl_client *client, struct wl_resource *resource, uint32_t hint, uint32_t purpose)

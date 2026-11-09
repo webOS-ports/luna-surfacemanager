@@ -21,6 +21,8 @@
 #include "waylandinputmethodcontext.h"
 #include "waylandinputpanel.h"
 #include "waylandinputmethodmanager.h"
+#include "waylandtextmodel.h"
+#include "webossurfaceitem.h"
 
 #include "weboscorecompositor.h"
 
@@ -119,6 +121,7 @@ void WaylandInputMethod::contextActivated()
         return;
     }
     m_activeContext = context;
+    followCursorRectangle();
     emit activeChanged();
 }
 
@@ -130,7 +133,49 @@ void WaylandInputMethod::contextDeactivated()
         return;
     }
     m_activeContext = NULL;
+    followCursorRectangle();
     emit activeChanged();
+}
+
+void WaylandInputMethod::followCursorRectangle()
+{
+    QObject::disconnect(m_cursorRectangleConnection);
+    m_cursorRectangleConnection = QMetaObject::Connection();
+
+    const WaylandTextModel *model = m_activeContext ? m_activeContext->textModel() : nullptr;
+    if (model) {
+        m_cursorRectangleConnection =
+            connect(model, &WaylandTextModel::cursorRectangleChanged,
+                    this, &WaylandInputMethod::cursorRectangleChanged);
+    }
+
+    emit cursorRectangleChanged();
+}
+
+bool WaylandInputMethod::hasCursorRectangle() const
+{
+    const WaylandTextModel *model = m_activeContext ? m_activeContext->textModel() : nullptr;
+    return model && model->hasCursorRectangle() && model->surfaceItem();
+}
+
+QVariant WaylandInputMethod::cursorRectangleIn(QQuickItem *item) const
+{
+    const WaylandTextModel *model = m_activeContext ? m_activeContext->textModel() : nullptr;
+    const WebOSSurfaceItem *clientItem = model ? model->surfaceItem() : nullptr;
+
+    if (!clientItem || !model->hasCursorRectangle())
+        return QVariant();
+
+    // The way panelRectForClient() maps the other way: surface to its item,
+    // then item to item, so that a scaled or moved window is followed.
+    const QRect caret = model->cursorRectangle();
+    const QPointF topLeft = clientItem->mapFromSurface(QPointF(caret.topLeft()));
+    const QPointF bottomRight =
+        clientItem->mapFromSurface(QPointF(caret.x() + caret.width(), caret.y() + caret.height()));
+    const QRectF inClient(topLeft, bottomRight);
+
+    return QVariant::fromValue(item ? clientItem->mapRectToItem(item, inClient)
+                                    : clientItem->mapRectToScene(inClient));
 }
 
 void WaylandInputMethod::deactivate()
