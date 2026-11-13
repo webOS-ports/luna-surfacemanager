@@ -8,6 +8,8 @@
         "audio.management",
         "batteryd.management",
         "bluetooth.management",
+        "bluetooth.operation",
+        "bluetooth.query",
         "boot.query",
         "database.operation",
         "display.operation",
